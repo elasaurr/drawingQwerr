@@ -1,107 +1,133 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+// root/src/contexts/AuthContext.tsx
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { apiSignup, apiLogin, apiLogout, apiFetchProfile, apiUpdateProfile, apiPremium } from "../api/users";
 
 interface User {
-  id: string;
-  username: string;
-  email: string;
-  avatar?: string;
-  bio?: string;
-  isPremium?: boolean;
-  premiumExpiresAt?: string;
+	id: string;
+	username: string;
+	email: string;
+	avatar?: string;
+	bio?: string;
+	premium_expiry: string | null;
 }
 
 interface AuthContextType {
-  user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (username: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
-  updateProfile: (updates: Partial<User>) => void;
+	user: User | null;
+	loading: boolean;
+	login: (email: string, password: string) => Promise<void>;
+	signup: (username: string, email: string, password: string) => Promise<void>;
+	logout: () => Promise<void>;
+	updateProfile: (updates: Partial<User>) => Promise<void>;
+	getPremium: (plan: "monthly" | "yearly") => Promise<void>;
+	fetchProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+	const [user, setUser] = useState<User | null>(null);
+	const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check if user is logged in from localStorage
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
+	useEffect(() => {
+		fetchProfile();
+	}, []);
 
-  const login = async (email: string, password: string) => {
-    // Mock login - check against stored users
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const foundUser = users.find((u: any) => u.email === email && u.password === password);
-    
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-    } else {
-      throw new Error('Invalid email or password');
-    }
-  };
+	const fetchProfile = async () => {
+		setLoading(true);
+		try {
+			const storedUserId = localStorage.getItem("userId");
+			const accessToken = localStorage.getItem("accessToken");
 
-  const signup = async (username: string, email: string, password: string) => {
-    // Mock signup - store in localStorage
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    
-    if (users.some((u: any) => u.email === email)) {
-      throw new Error('Email already exists');
-    }
+			if (!storedUserId || !accessToken) {
+				setUser(null);
+				return;
+			}
+			const profile = await apiFetchProfile(storedUserId);
+			setUser(profile);
+		} catch (err: any) {
+			localStorage.removeItem("userId");
+			localStorage.removeItem("accessToken");
+			localStorage.removeItem("refreshToken");
+			setUser(null);
+		} finally {
+			setLoading(false);
+		}
+	};
 
-    const newUser = {
-      id: Date.now().toString(),
-      username,
-      email,
-      password,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
-      bio: 'Hello! I love creating digital art.',
-    };
+	const signup = async (username: string, email: string, password: string) => {
+		try {
+			const res = await apiSignup({ username, email, password });
+			localStorage.setItem("userId", res.userId);
+			localStorage.setItem("accessToken", res.access_token);
+			localStorage.setItem("refreshToken", res.refresh_token);
+			await fetchProfile();
+		} catch (err: any) {
+			throw new Error(err.response?.data?.error || err.message);
+		}
+	};
 
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
+	const login = async (email: string, password: string) => {
+		try {
+			const res = await apiLogin({ email, password });
+			localStorage.setItem("userId", res.user.id);
+			localStorage.setItem("accessToken", res.access_token);
+			localStorage.setItem("refreshToken", res.refresh_token);
+			await fetchProfile();
+		} catch (err: any) {
+			throw new Error(err.response?.data?.error || err.message);
+		}
+	};
 
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-  };
+	const logout = async () => {
+		setLoading(true);
+		try {
+			await apiLogout();
+		} catch (err: any) {
+			console.error(err);
+		} finally {
+			localStorage.removeItem("userId");
+			localStorage.removeItem("accessToken");
+			localStorage.removeItem("refreshToken");
+			setUser(null);
+			setLoading(false);
+		}
+	};
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
-  };
+	const updateProfile = async (updates: Partial<User>) => {
+		if (!user) return;
+		// setLoading(true);
+		try {
+			await apiUpdateProfile(user.id, updates);
+			await fetchProfile();
+		} catch (err: any) {
+			throw new Error(err.response?.data?.error || err.message);
+		} finally {
+			// setLoading(false);
+		}
+	};
 
-  const updateProfile = (updates: Partial<User>) => {
-    if (!user) return;
+	const getPremium = async (plan: "monthly" | "yearly") => {
+		if (!user) return;
+		setLoading(true);
+		try {
+			await apiPremium(user.id, plan);
+			await fetchProfile();
+		} catch (err: any) {
+			throw new Error(err.response?.data?.error || err.message);
+		} finally {
+			setLoading(false);
+		}
+	};
 
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-
-    // Update in users array
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.id === user.id);
-    if (userIndex !== -1) {
-      users[userIndex] = { ...users[userIndex], ...updates };
-      localStorage.setItem('users', JSON.stringify(users));
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
+	return (
+		<AuthContext.Provider value={{ user, loading, login, signup, logout, updateProfile, getPremium, fetchProfile }}>
+			{children}
+		</AuthContext.Provider>
+	);
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+	const context = useContext(AuthContext);
+	if (!context) throw new Error("useAuth must be used within an AuthProvider");
+	return context;
 }
