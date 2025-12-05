@@ -1,3 +1,5 @@
+// TODO: All backend stuff dito
+
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -374,7 +376,7 @@ export default function DrawingCanvas() {
 	};
 
 	const handleBrushSelect = (brush: BrushType) => {
-		if (brush.isPremium && !user?.isPremium) {
+		if (brush.isPremium && !user?.premium_expiry) {
 			if (confirm("This brush requires Premium. Would you like to upgrade?")) {
 				navigate("/premium");
 			}
@@ -402,9 +404,9 @@ export default function DrawingCanvas() {
 						<LayersIcon className="w-4 h-4 mr-2" />
 						Layers
 					</Button>
-					{!user?.isPremium && (
+					{!user?.premium_expiry && (
 						<Link to="/premium">
-							<Button variant="outline" size="sm" className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-none">
+							<Button variant="outline" size="sm" className="bg-linear-to-r from-purple-600 to-blue-600 text-white border-none">
 								<Crown className="w-4 h-4 mr-2" />
 								Upgrade
 							</Button>
@@ -596,7 +598,7 @@ export default function DrawingCanvas() {
 									<div className="text-sm mb-2">Current: {selectedBrush.name}</div>
 									<div className="h-24 bg-white rounded-lg flex items-center justify-center">
 										<div
-											className="w-32 h-1 bg-gradient-to-r from-transparent via-black to-transparent rounded-full"
+											className="w-32 h-1 bg-linear-to-r from-transparent via-black to-transparent rounded-full"
 											style={{
 												opacity: selectedBrush.opacity,
 												filter: `blur(${selectedBrush.softness * 2}px)`,
@@ -619,8 +621,8 @@ export default function DrawingCanvas() {
 													{brush.isPremium && (
 														<Badge
 															variant="secondary"
-															className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white text-xs">
-															{user?.isPremium ? <Crown className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+															className="bg-linear-to-r from-yellow-400 to-orange-400 text-white text-xs">
+															{user?.premium_expiry ? <Crown className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
 														</Badge>
 													)}
 													{!brush.isPremium && <span className="text-xs text-gray-500">{(brushSize / 10).toFixed(1)}</span>}
@@ -639,16 +641,16 @@ export default function DrawingCanvas() {
 									))}
 								</div>
 
-								{!user?.isPremium && (
-									<div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200 mt-4">
+								{!user?.premium_expiry && (
+									<div className="bg-linear-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200 mt-4">
 										<div className="flex items-start gap-3">
-											<Crown className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+											<Crown className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
 											<div className="flex-1">
 												<p className="text-sm mb-2">Unlock 50+ premium brushes with Premium</p>
 												<Button
 													size="sm"
 													onClick={() => navigate("/premium")}
-													className="bg-gradient-to-r from-purple-600 to-blue-600">
+													className="bg-linear-to-r from-purple-600 to-blue-600">
 													Upgrade Now
 												</Button>
 											</div>

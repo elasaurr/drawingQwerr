@@ -79,7 +79,7 @@ export default function Dashboard() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+		<div className="min-h-screen bg-linear-to-br from-purple-50 via-white to-blue-50">
 			{isDeleting && (
 				<div className="fixed top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-gray-500/20 z-50">
 					<Spinner />
@@ -91,7 +91,7 @@ export default function Dashboard() {
 						<Palette className="w-6 h-6 text-purple-600" />
 						<span className="text-xl">qwer</span>
 						{user?.premium_expiry !== null && (
-							<Badge className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white">
+							<Badge className="bg-linear-to-r from-yellow-400 to-orange-400 text-white">
 								<Crown className="w-3 h-3 mr-1" />
 								Premium
 							</Badge>
@@ -100,7 +100,7 @@ export default function Dashboard() {
 					<div className="flex items-center gap-4">
 						{!user?.premium_expiry && (
 							<Link to="/premium">
-								<Button size="sm" className="bg-gradient-to-r from-purple-600 to-blue-600">
+								<Button size="sm" className="bg-linear-to-r from-purple-600 to-blue-600">
 									<Crown className="w-4 h-4 mr-2" />
 									Upgrade
 								</Button>
