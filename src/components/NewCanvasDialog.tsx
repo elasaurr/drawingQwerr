@@ -124,7 +124,7 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 								<Label>Quality</Label>
 								<span className="text-sm text-gray-600">{quality}%</span>
 							</div>
-							<Slider value={[quality]} onValueChange={(values) => setQuality(values[0])} min={10} max={100} step={5} />
+							<Slider value={[quality]} onValueChange={(values: number[]) => setQuality(values[0])} min={10} max={100} step={5} />
 							<div className="flex justify-between text-xs text-gray-500 mt-1">
 								<span>Speed</span>
 								<span>Quality</span>
@@ -154,7 +154,7 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 												{preset.isPremium && (
 													<Badge
 														variant="secondary"
-														className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white text-xs">
+														className="bg-linear-to-r from-yellow-400 to-orange-400 text-white text-xs">
 														{user?.premium_expiry ? <Crown className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
 													</Badge>
 												)}
@@ -171,9 +171,9 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 					</div>
 
 					{!user?.premium_expiry && (
-						<div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+						<div className="bg-linear-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
 							<div className="flex items-start gap-3">
-								<Crown className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+								<Crown className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
 								<div className="flex-1">
 									<p className="mb-2">Unlock all canvas sizes and premium features with Premium</p>
 									<Button
@@ -182,7 +182,7 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 											onOpenChange(false);
 											navigate("/premium");
 										}}
-										className="bg-gradient-to-r from-purple-600 to-blue-600">
+										className="bg-linear-to-r from-purple-600 to-blue-600">
 										Upgrade to Premium
 									</Button>
 								</div>

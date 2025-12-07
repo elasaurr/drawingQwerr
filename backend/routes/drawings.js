@@ -56,7 +56,7 @@ router.get("/:userId/:drawingId/url", async (req, res) => {
 // Create a new drawing
 router.post("/", async (req, res) => {
 	try {
-		const { userId, imageData, drawingId, title, thumbnail, createdAt } = req.body;
+		const { userId, title, width, height, thumbnail_path, createdAt } = req.body;
 		const filePath = `${userId}/${encodeURIComponent(drawingId)}.png`;
 		const buffer = dataURLToBuffer(imageData);
 
@@ -72,8 +72,7 @@ router.post("/", async (req, res) => {
 			id: drawingId,
 			user_id: userId,
 			title,
-			image_url: storageData.path,
-			thumbnail_url: thumbnail,
+			thumbnail_path: thumbnail,
 			created_at: createdAt,
 			updated_at: createdAt,
 		});

@@ -1,6 +1,4 @@
-// TODO: All backend stuff dito
-
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "./ui/button";
@@ -37,9 +35,13 @@ const brushes: BrushType[] = [
 	{ id: "airbrush", name: "Airbrush", isPremium: true, softness: 1, opacity: 0.3 },
 ];
 
+const CANVAS_WIDTH = 1200;
+const CANVAS_HEIGHT = 800;
+
 export default function DrawingCanvas() {
-	const mainCanvasRef = useRef<HTMLCanvasElement>(null);
-	const layerCanvasRef = useRef<HTMLCanvasElement>(null);
+	const tempCanvasRef = useRef<HTMLCanvasElement>(null);
+	const layerCanvasRefs = useRef<{ [key: string]: HTMLCanvasElement | null }>({});
+
 	const { user } = useAuth();
 	const { id } = useParams();
 	const navigate = useNavigate();
@@ -47,186 +49,85 @@ export default function DrawingCanvas() {
 	const [tool, setTool] = useState<Tool>("pencil");
 	const [selectedBrush, setSelectedBrush] = useState(brushes[0]);
 	const [color, setColor] = useState("#000000");
-	const [brushSize, setBrushSize] = useState(73);
+	const [brushSize, setBrushSize] = useState(20);
 	const [brushOpacity, setBrushOpacity] = useState(100);
 	const [isDrawing, setIsDrawing] = useState(false);
+
 	const [history, setHistory] = useState<DrawingState[]>([]);
 	const [historyStep, setHistoryStep] = useState(-1);
+
 	const [startPos, setStartPos] = useState({ x: 0, y: 0 });
 	const [drawingTitle, setDrawingTitle] = useState("Untitled Drawing");
 	const [showLayerPanel, setShowLayerPanel] = useState(true);
 
-	const [isLoading, setIsLoading] = useState(false);
-	const [isSaving, setIsSaving] = useState(false);
-	const [isInitialized, setIsInitialized] = useState(false);
-
-	const [layers, setLayers] = useState<Layer[]>([
-		{
-			id: "1",
-			name: "Layer 1",
-			visible: true,
-			opacity: 100,
-			blendMode: "normal",
-			locked: false,
-			imageData: null,
-		},
-	]);
-	const [activeLayerId, setActiveLayerId] = useState("1");
+	const [layers, setLayers] = useState<Layer[]>([]);
+	const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
 	useEffect(() => {
-		const canvas = mainCanvasRef.current;
-		if (!canvas) return;
+		if (layers.length > 0) return;
 
-		const settings = localStorage.getItem("newCanvasSettings");
-		if (settings) {
-			const { width, height } = JSON.parse(settings);
-			canvas.width = width;
-			canvas.height = height;
-			localStorage.removeItem("newCanvasSettings");
-		} else {
-			canvas.width = 1200;
-			canvas.height = 800;
+		if (!id) {
+			const initialId = crypto.randomUUID();
+			const initialLayer: Layer = {
+				id: initialId,
+				name: "Layer 1",
+				visible: true,
+				opacity: 100,
+				blendMode: "normal",
+				locked: false,
+				imageData: null,
+			};
+			setLayers([initialLayer]);
+			setActiveLayerId(initialId);
+
+			setHistory([{ layers: [initialLayer] }]);
+			setHistoryStep(0);
 		}
+	}, []);
 
-		// Load existing drawing if editing
-		if (id) {
-			const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
-			const drawing = drawings.find((d: any) => d.id === id);
-			if (drawing && drawing.layersData) {
-				setDrawingTitle(drawing.title);
+	useEffect(() => {
+		if (!id) return;
+
+		const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
+		const drawing = drawings.find((d: any) => d.id === id);
+
+		if (drawing) {
+			setDrawingTitle(drawing.title);
+
+			if (drawing.layersData) {
 				setLayers(drawing.layersData);
-				renderAllLayers(drawing.layersData);
-			} else if (drawing) {
-				// Legacy drawing without layers
-				setDrawingTitle(drawing.title);
-				const img = new Image();
-				img.onload = () => {
-					const newLayers = [...layers];
-					const tempCanvas = document.createElement("canvas");
-					tempCanvas.width = canvas.width;
-					tempCanvas.height = canvas.height;
-					const tempCtx = tempCanvas.getContext("2d");
-					if (tempCtx) {
-						tempCtx.drawImage(img, 0, 0);
-						newLayers[0].imageData = tempCanvas.toDataURL();
-						setLayers(newLayers);
-						renderAllLayers(newLayers);
-					}
-				};
-				img.src = drawing.thumbnail;
+				if (drawing.layersData.length > 0) {
+					setActiveLayerId(drawing.layersData[0].id);
+				}
+				setHistory([{ layers: drawing.layersData }]);
+				setHistoryStep(0);
 			}
 		}
-
-		saveToHistory();
 	}, [id]);
 
-	const renderAllLayers = (layersToRender: Layer[] = layers) => {
-		const canvas = mainCanvasRef.current;
-		if (!canvas) return;
-
-		const ctx = canvas.getContext("2d");
-		if (!ctx) return;
-
-		// Clear canvas
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		ctx.fillStyle = "#ffffff";
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-		// Render layers from bottom to top (reverse order)
-		[...layersToRender].reverse().forEach((layer) => {
-			if (!layer.visible || !layer.imageData) return;
-
-			const img = new Image();
-			img.onload = () => {
-				ctx.save();
-				ctx.globalAlpha = layer.opacity / 100;
-				ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
-				ctx.drawImage(img, 0, 0);
-				ctx.restore();
-			};
-			img.src = layer.imageData;
-		});
-	};
-
-	const saveLayerData = () => {
-		const layerCanvas = layerCanvasRef.current;
-		if (!layerCanvas) return;
-
-		const newLayers = layers.map((l) => {
-			if (l.id === activeLayerId) {
-				return { ...l, imageData: layerCanvas.toDataURL() };
-			}
-			return l;
-		});
-
-		setLayers(newLayers);
-		renderAllLayers(newLayers);
-		return newLayers;
-	};
-
-	const saveToHistory = () => {
-		const newHistory = history.slice(0, historyStep + 1);
-		newHistory.push({ layers: JSON.parse(JSON.stringify(layers)) });
-		setHistory(newHistory);
-		setHistoryStep(newHistory.length - 1);
-	};
-
-	const undo = () => {
-		if (historyStep > 0) {
-			const newStep = historyStep - 1;
-			const previousState = history[newStep];
-			setLayers(previousState.layers);
-			renderAllLayers(previousState.layers);
-			setHistoryStep(newStep);
-		}
-	};
-
-	const redo = () => {
-		if (historyStep < history.length - 1) {
-			const newStep = historyStep + 1;
-			const nextState = history[newStep];
-			setLayers(nextState.layers);
-			renderAllLayers(nextState.layers);
-			setHistoryStep(newStep);
-		}
-	};
-
-	const clearCanvas = () => {
-		if (!confirm("Are you sure you want to clear this layer?")) return;
-
-		const layerCanvas = layerCanvasRef.current;
-		const ctx = layerCanvas?.getContext("2d");
-		if (!layerCanvas || !ctx) return;
-
-		ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-		saveLayerData();
-		saveToHistory();
-	};
-
 	useEffect(() => {
-		const layerCanvas = layerCanvasRef.current;
-		const mainCanvas = mainCanvasRef.current;
-		if (!layerCanvas || !mainCanvas) return;
+		layers.forEach((layer) => {
+			const canvas = layerCanvasRefs.current[layer.id];
+			if (!canvas) return;
 
-		layerCanvas.width = mainCanvas.width;
-		layerCanvas.height = mainCanvas.height;
+			const ctx = canvas.getContext("2d");
+			if (!ctx) return;
 
-		const ctx = layerCanvas.getContext("2d");
-		if (!ctx) return;
-
-		// Load active layer data
-		const activeLayer = layers.find((l) => l.id === activeLayerId);
-		if (activeLayer?.imageData) {
-			const img = new Image();
-			img.onload = () => {
-				ctx.drawImage(img, 0, 0);
-			};
-			img.src = activeLayer.imageData;
-		}
-	}, [activeLayerId]);
+			if (layer.imageData) {
+				const img = new Image();
+				img.onload = () => {
+					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					ctx.drawImage(img, 0, 0);
+				};
+				img.src = layer.imageData;
+			} else {
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
+			}
+		});
+	}, [layers]);
 
 	const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
-		const canvas = layerCanvasRef.current;
+		const canvas = tempCanvasRef.current;
 		if (!canvas) return { x: 0, y: 0 };
 
 		const rect = canvas.getBoundingClientRect();
@@ -241,8 +142,12 @@ export default function DrawingCanvas() {
 
 	const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		const activeLayer = layers.find((l) => l.id === activeLayerId);
-		if (activeLayer?.locked) {
-			alert("This layer is locked. Unlock it to draw.");
+		if (!activeLayer) {
+			alert("Please select a layer to draw on.");
+			return;
+		}
+		if (activeLayer.locked || !activeLayer.visible) {
+			alert("Cannot draw on a locked or hidden layer.");
 			return;
 		}
 
@@ -250,34 +155,32 @@ export default function DrawingCanvas() {
 		setStartPos(pos);
 		setIsDrawing(true);
 
-		const canvas = layerCanvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (!canvas || !ctx) return;
+		const ctx = tempCanvasRef.current?.getContext("2d");
+		if (!ctx) return;
 
 		ctx.lineCap = "round";
 		ctx.lineJoin = "round";
 
-		if (tool === "pencil") {
-			ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
-			ctx.strokeStyle = color;
-			ctx.lineWidth = brushSize / 10;
-			ctx.beginPath();
-			ctx.moveTo(pos.x, pos.y);
-		} else if (tool === "eraser") {
+		if (tool === "eraser") {
+			ctx.strokeStyle = "#000000";
 			ctx.globalAlpha = 1;
-			ctx.globalCompositeOperation = "destination-out";
-			ctx.lineWidth = brushSize / 5;
-			ctx.beginPath();
-			ctx.moveTo(pos.x, pos.y);
+			ctx.lineWidth = brushSize;
+			ctx.globalCompositeOperation = "source-over";
+		} else {
+			ctx.strokeStyle = color;
+			ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
+			ctx.lineWidth = brushSize;
+			ctx.globalCompositeOperation = "source-over";
 		}
+
+		ctx.beginPath();
+		ctx.moveTo(pos.x, pos.y);
 	};
 
 	const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		if (!isDrawing) return;
-
-		const canvas = layerCanvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (!canvas || !ctx) return;
+		const ctx = tempCanvasRef.current?.getContext("2d");
+		if (!ctx) return;
 
 		const pos = getMousePos(e);
 
@@ -285,58 +188,169 @@ export default function DrawingCanvas() {
 			ctx.lineTo(pos.x, pos.y);
 			ctx.stroke();
 		}
-
-		// Update preview
-		renderAllLayers();
 	};
 
 	const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		if (!isDrawing) return;
+		setIsDrawing(false);
 
-		const canvas = layerCanvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (!canvas || !ctx) return;
+		const tempCanvas = tempCanvasRef.current;
+		const tempCtx = tempCanvas?.getContext("2d");
+		if (!tempCanvas || !tempCtx) return;
 
 		const pos = getMousePos(e);
 
-		ctx.globalAlpha = brushOpacity / 100;
-		ctx.globalCompositeOperation = "source-over";
+		if (tool === "line" || tool === "rectangle" || tool === "circle") {
+			tempCtx.strokeStyle = color;
+			tempCtx.lineWidth = brushSize;
+			tempCtx.globalAlpha = brushOpacity / 100;
 
-		if (tool === "line") {
-			ctx.strokeStyle = color;
-			ctx.lineWidth = brushSize / 10;
-			ctx.beginPath();
-			ctx.moveTo(startPos.x, startPos.y);
-			ctx.lineTo(pos.x, pos.y);
-			ctx.stroke();
-		} else if (tool === "rectangle") {
-			ctx.strokeStyle = color;
-			ctx.lineWidth = brushSize / 10;
-			ctx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
-		} else if (tool === "circle") {
-			ctx.strokeStyle = color;
-			ctx.lineWidth = brushSize / 10;
-			const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
-			ctx.beginPath();
-			ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-			ctx.stroke();
+			if (tool === "line") {
+				tempCtx.beginPath();
+				tempCtx.moveTo(startPos.x, startPos.y);
+				tempCtx.lineTo(pos.x, pos.y);
+				tempCtx.stroke();
+			} else if (tool === "rectangle") {
+				tempCtx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
+			} else if (tool === "circle") {
+				const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
+				tempCtx.beginPath();
+				tempCtx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+				tempCtx.stroke();
+			}
 		}
 
-		ctx.globalAlpha = 1;
-		setIsDrawing(false);
+		if (activeLayerId) {
+			const activeCanvas = layerCanvasRefs.current[activeLayerId];
+			const activeCtx = activeCanvas?.getContext("2d");
 
-		const newLayers = saveLayerData();
-		if (newLayers) {
-			setHistory([...history.slice(0, historyStep + 1), { layers: newLayers }]);
-			setHistoryStep(historyStep + 1);
+			if (activeCanvas && activeCtx) {
+				activeCtx.save();
+
+				if (tool === "eraser") {
+					activeCtx.globalCompositeOperation = "destination-out";
+					activeCtx.globalAlpha = 1;
+				} else {
+					activeCtx.globalCompositeOperation = "source-over";
+					activeCtx.globalAlpha = 1;
+				}
+
+				activeCtx.drawImage(tempCanvas, 0, 0);
+				activeCtx.restore();
+
+				const newImageData = activeCanvas.toDataURL();
+
+				const newLayers = layers.map((l) => (l.id === activeLayerId ? { ...l, imageData: newImageData } : l));
+
+				setLayers(newLayers);
+
+				const newHistory = history.slice(0, historyStep + 1);
+				newHistory.push({ layers: JSON.parse(JSON.stringify(newLayers)) });
+				setHistory(newHistory);
+				setHistoryStep(newHistory.length - 1);
+			}
+		}
+
+		tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+	};
+
+	const handleAddLayer = () => {
+		const newLayerId = crypto.randomUUID();
+		const newLayer: Layer = {
+			id: newLayerId,
+			name: `Layer ${layers.length + 1}`,
+			visible: true,
+			opacity: 100,
+			blendMode: "normal",
+			locked: false,
+			imageData: null,
+		};
+
+		const newLayers = [newLayer, ...layers];
+		setLayers(newLayers);
+		setActiveLayerId(newLayerId);
+		addToHistory(newLayers);
+	};
+
+	const handleDeleteLayer = (layerIdToDelete: string) => {
+		const newLayers = layers.filter((l) => l.id !== layerIdToDelete);
+		let newActiveId = activeLayerId;
+		if (activeLayerId === layerIdToDelete) {
+			newActiveId = newLayers.length > 0 ? newLayers[0].id : null;
+		}
+		setLayers(newLayers);
+		setActiveLayerId(newActiveId);
+		addToHistory(newLayers);
+	};
+
+	const addToHistory = (currentLayers: Layer[]) => {
+		const newHistory = history.slice(0, historyStep + 1);
+		newHistory.push({ layers: JSON.parse(JSON.stringify(currentLayers)) });
+		setHistory(newHistory);
+		setHistoryStep(newHistory.length - 1);
+	};
+
+	const undo = () => {
+		if (historyStep > 0) {
+			const newStep = historyStep - 1;
+			const previousState = history[newStep];
+			setLayers(previousState.layers);
+			setHistoryStep(newStep);
 		}
 	};
 
-	const saveDrawing = () => {
-		const canvas = mainCanvasRef.current;
-		if (!canvas || !user) return;
+	const redo = () => {
+		if (historyStep < history.length - 1) {
+			const newStep = historyStep + 1;
+			const nextState = history[newStep];
+			setLayers(nextState.layers);
+			setHistoryStep(newStep);
+		}
+	};
 
-		const thumbnail = canvas.toDataURL();
+	const clearCanvas = () => {
+		if (!activeLayerId || !confirm("Are you sure you want to clear this layer?")) return;
+
+		const activeCanvas = layerCanvasRefs.current[activeLayerId];
+		const ctx = activeCanvas?.getContext("2d");
+		if (activeCanvas && ctx) {
+			ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+
+			const newLayers = layers.map((l) => (l.id === activeLayerId ? { ...l, imageData: activeCanvas.toDataURL() } : l));
+			setLayers(newLayers);
+			addToHistory(newLayers);
+		}
+	};
+
+	const flattenCanvas = (): string => {
+		const tempC = document.createElement("canvas");
+		tempC.width = CANVAS_WIDTH;
+		tempC.height = CANVAS_HEIGHT;
+		const ctx = tempC.getContext("2d");
+		if (!ctx) return "";
+
+		ctx.fillStyle = "#ffffff";
+		ctx.fillRect(0, 0, tempC.width, tempC.height);
+
+		[...layers].reverse().forEach((layer) => {
+			if (!layer.visible) return;
+
+			const layerCanvas = layerCanvasRefs.current[layer.id];
+			if (layerCanvas) {
+				ctx.save();
+				ctx.globalAlpha = layer.opacity / 100;
+				ctx.globalCompositeOperation = layer.blendMode;
+				ctx.drawImage(layerCanvas, 0, 0);
+				ctx.restore();
+			}
+		});
+
+		return tempC.toDataURL();
+	};
+
+	const saveDrawing = () => {
+		if (!user) return;
+		const thumbnail = flattenCanvas();
 		const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
 
 		if (id) {
@@ -366,12 +380,10 @@ export default function DrawingCanvas() {
 	};
 
 	const downloadDrawing = () => {
-		const canvas = mainCanvasRef.current;
-		if (!canvas) return;
-
+		const dataUrl = flattenCanvas();
 		const link = document.createElement("a");
 		link.download = `${drawingTitle}.png`;
-		link.href = canvas.toDataURL();
+		link.href = dataUrl;
 		link.click();
 	};
 
@@ -387,7 +399,7 @@ export default function DrawingCanvas() {
 
 	return (
 		<div className="h-screen flex flex-col bg-gray-100">
-			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4">
+			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
 					<Link to="/dashboard">
 						<Button variant="ghost" size="sm">
@@ -404,14 +416,6 @@ export default function DrawingCanvas() {
 						<LayersIcon className="w-4 h-4 mr-2" />
 						Layers
 					</Button>
-					{!user?.premium_expiry && (
-						<Link to="/premium">
-							<Button variant="outline" size="sm" className="bg-linear-to-r from-purple-600 to-blue-600 text-white border-none">
-								<Crown className="w-4 h-4 mr-2" />
-								Upgrade
-							</Button>
-						</Link>
-					)}
 					<Button variant="outline" size="sm" onClick={saveDrawing}>
 						<Save className="w-4 h-4 mr-2" />
 						Save
@@ -424,12 +428,14 @@ export default function DrawingCanvas() {
 			</nav>
 
 			<div className="flex-1 flex overflow-hidden">
-				<div className="bg-white border-r w-80 flex flex-col">
+				<div className="bg-white border-r w-80 flex flex-col z-40 relative overflow-y-auto">
 					<Tabs defaultValue="tools" className="flex-1 flex flex-col">
-						<TabsList className="grid w-full grid-cols-2 m-2">
-							<TabsTrigger value="tools">Tools</TabsTrigger>
-							<TabsTrigger value="brushes">Brushes</TabsTrigger>
-						</TabsList>
+						<div className="px-4 m-4">
+							<TabsList className="flex w-full">
+								<TabsTrigger value="tools">Tools</TabsTrigger>
+								<TabsTrigger value="brushes">Brushes</TabsTrigger>
+							</TabsList>
+						</div>
 
 						<ScrollArea className="flex-1">
 							<TabsContent value="tools" className="p-4 space-y-6 mt-0">
@@ -463,24 +469,21 @@ export default function DrawingCanvas() {
 											size="sm"
 											onClick={() => setTool("line")}
 											className="justify-start">
-											<Minus className="w-4 h-4 mr-2" />
-											Line
+											<Minus className="w-4 h-4 mr-2" /> Line
 										</Button>
 										<Button
 											variant={tool === "rectangle" ? "default" : "outline"}
 											size="sm"
 											onClick={() => setTool("rectangle")}
 											className="justify-start">
-											<Square className="w-4 h-4 mr-2" />
-											Rectangle
+											<Square className="w-4 h-4 mr-2" /> Rectangle
 										</Button>
 										<Button
 											variant={tool === "circle" ? "default" : "outline"}
 											size="sm"
 											onClick={() => setTool("circle")}
 											className="justify-start">
-											<Circle className="w-4 h-4 mr-2" />
-											Circle
+											<Circle className="w-4 h-4 mr-2" /> Circle
 										</Button>
 									</div>
 								</div>
@@ -497,80 +500,41 @@ export default function DrawingCanvas() {
 											onChange={(e) => setColor(e.target.value)}
 											className="h-10 cursor-pointer"
 										/>
-										<Input type="text" value={color} onChange={(e) => setColor(e.target.value)} className="flex-1" />
+										<Input
+											id="colorText"
+											type="text"
+											value={color}
+											onChange={(e) => setColor(e.target.value)}
+											className="h-10 cursor-pointer"
+										/>
 									</div>
 								</div>
 
 								<div>
 									<div className="flex justify-between mb-2">
-										<Label htmlFor="brushSize">Thickness</Label>
-										<span className="text-sm text-gray-600">{(brushSize / 10).toFixed(1)}px</span>
+										<Label>Thickness: {brushSize.toFixed(1)}px</Label>
 									</div>
-									<div className="flex items-center gap-2">
-										<Button
-											variant="outline"
-											size="icon"
-											className="h-8 w-8 rounded-full"
-											onClick={() => setBrushSize(Math.max(1, brushSize - 5))}>
-											-
-										</Button>
-										<Input
-											id="brushSize"
-											type="range"
-											min="1"
-											max="500"
-											value={brushSize}
-											onChange={(e) => setBrushSize(Number(e.target.value))}
-											className="flex-1"
-										/>
-										<Button
-											variant="outline"
-											size="icon"
-											className="h-8 w-8 rounded-full"
-											onClick={() => setBrushSize(Math.min(500, brushSize + 5))}>
-											+
-										</Button>
-									</div>
+									<Input type="range" min="1" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} />
 								</div>
 
 								<div>
 									<div className="flex justify-between mb-2">
-										<Label htmlFor="opacity">Opacity</Label>
-										<span className="text-sm text-gray-600">{brushOpacity}%</span>
+										<Label>Opacity: {brushOpacity}%</Label>
 									</div>
-									<div className="flex items-center gap-2">
-										<Button
-											variant="outline"
-											size="icon"
-											className="h-8 w-8 rounded-full"
-											onClick={() => setBrushOpacity(Math.max(0, brushOpacity - 5))}>
-											-
-										</Button>
-										<Input
-											id="opacity"
-											type="range"
-											min="0"
-											max="100"
-											value={brushOpacity}
-											onChange={(e) => setBrushOpacity(Number(e.target.value))}
-											className="flex-1"
-										/>
-										<Button
-											variant="outline"
-											size="icon"
-											className="h-8 w-8 rounded-full"
-											onClick={() => setBrushOpacity(Math.min(100, brushOpacity + 5))}>
-											+
-										</Button>
-									</div>
+									<Input
+										type="range"
+										min="1"
+										max="100"
+										value={brushOpacity}
+										onChange={(e) => setBrushOpacity(Number(e.target.value))}
+									/>
 								</div>
 
 								<div className="border-t pt-4">
 									<Label className="mb-3 block">Controls</Label>
 									<div className="flex flex-col gap-2">
 										<Button variant="outline" size="sm" onClick={undo} disabled={historyStep <= 0} className="justify-start">
-											<Undo className="w-4 h-4 mr-2" />
-											Undo
+											<Undo className="w-4 h-4 mr-2" /> Undo
 										</Button>
 										<Button
 											variant="outline"
@@ -578,108 +542,95 @@ export default function DrawingCanvas() {
 											onClick={redo}
 											disabled={historyStep >= history.length - 1}
 											className="justify-start">
-											<Redo className="w-4 h-4 mr-2" />
-											Redo
+											<Redo className="w-4 h-4 mr-2" /> Redo
 										</Button>
 										<Button
 											variant="outline"
 											size="sm"
 											onClick={clearCanvas}
-											className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50">
-											<Trash2 className="w-4 h-4 mr-2" />
-											Clear Layer
+											className="justify-start text-red-600 hover:bg-red-50">
+											<Trash2 className="w-4 h-4 mr-2" /> Clear Layer
 										</Button>
 									</div>
 								</div>
 							</TabsContent>
 
 							<TabsContent value="brushes" className="p-4 space-y-4 mt-0">
-								<div className="bg-gray-100 rounded-lg p-4 mb-4">
-									<div className="text-sm mb-2">Current: {selectedBrush.name}</div>
-									<div className="h-24 bg-white rounded-lg flex items-center justify-center">
-										<div
-											className="w-32 h-1 bg-linear-to-r from-transparent via-black to-transparent rounded-full"
-											style={{
-												opacity: selectedBrush.opacity,
-												filter: `blur(${selectedBrush.softness * 2}px)`,
-											}}
-										/>
-									</div>
-								</div>
-
 								<div className="space-y-2">
 									{brushes.map((brush) => (
 										<button
 											key={brush.id}
 											onClick={() => handleBrushSelect(brush)}
-											className={`w-full p-3 border rounded-lg hover:bg-gray-50 transition-colors text-left ${
+											className={`w-full p-3 border rounded-lg hover:bg-gray-50 text-left ${
 												selectedBrush.id === brush.id ? "border-purple-500 bg-purple-50" : ""
 											}`}>
-											<div className="flex items-center justify-between mb-2">
+											<div className="flex items-center justify-between">
 												<span className="text-sm">{brush.name}</span>
-												<div className="flex items-center gap-2">
-													{brush.isPremium && (
-														<Badge
-															variant="secondary"
-															className="bg-linear-to-r from-yellow-400 to-orange-400 text-white text-xs">
-															{user?.premium_expiry ? <Crown className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-														</Badge>
-													)}
-													{!brush.isPremium && <span className="text-xs text-gray-500">{(brushSize / 10).toFixed(1)}</span>}
-												</div>
-											</div>
-											<div className="h-8 bg-white rounded flex items-center px-4">
-												<div
-													className="w-full h-0.5 bg-black rounded-full"
-													style={{
-														opacity: brush.opacity,
-														filter: `blur(${brush.softness}px)`,
-													}}
-												/>
+												{brush.isPremium && (
+													<Badge variant="secondary">
+														<Lock className="w-3 h-3" />
+													</Badge>
+												)}
 											</div>
 										</button>
 									))}
 								</div>
-
-								{!user?.premium_expiry && (
-									<div className="bg-linear-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200 mt-4">
-										<div className="flex items-start gap-3">
-											<Crown className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
-											<div className="flex-1">
-												<p className="text-sm mb-2">Unlock 50+ premium brushes with Premium</p>
-												<Button
-													size="sm"
-													onClick={() => navigate("/premium")}
-													className="bg-linear-to-r from-purple-600 to-blue-600">
-													Upgrade Now
-												</Button>
-											</div>
-										</div>
-									</div>
-								)}
 							</TabsContent>
 						</ScrollArea>
 					</Tabs>
 				</div>
 
-				<div className="flex-1 p-8 overflow-auto bg-gray-200">
-					<div className="max-w-full mx-auto flex items-center justify-center min-h-full">
-						<div className="relative">
-							<canvas
-								ref={mainCanvasRef}
-								className="bg-white border-2 border-gray-300 rounded-lg shadow-lg max-w-full absolute top-0 left-0"
-								style={{ maxHeight: "calc(100vh - 200px)", pointerEvents: "none" }}
-							/>
-							<canvas
-								ref={layerCanvasRef}
-								className="bg-transparent border-2 border-gray-300 rounded-lg cursor-crosshair shadow-lg max-w-full relative"
-								style={{ maxHeight: "calc(100vh - 200px)" }}
-								onMouseDown={startDrawing}
-								onMouseMove={draw}
-								onMouseUp={stopDrawing}
-								onMouseLeave={stopDrawing}
-							/>
-						</div>
+				<div className="flex-1 p-4 md:p-8 overflow-auto bg-gray-200 flex items-center justify-center">
+					<div
+						className="relative bg-white shadow-2xl max-w-full"
+						style={{
+							// 1. Allow the container to be responsive (100% width)
+							width: "100%",
+							// 2. Cap the size at the actual canvas resolution so it doesn't get pixelated
+							maxWidth: `${CANVAS_WIDTH}px`,
+							// 3. Force the aspect ratio so the height calculates automatically based on width
+							aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}`,
+						}}>
+						<div className="absolute inset-0 bg-white pointer-events-none" />
+
+						{layers.map((layer, index) => {
+							const zIndex = layers.length - index;
+
+							return (
+								<canvas
+									key={layer.id}
+									ref={(el) => (layerCanvasRefs.current[layer.id] = el)}
+									// Internal Resolution (High Quality)
+									width={CANVAS_WIDTH}
+									height={CANVAS_HEIGHT}
+									// CSS Size (Responsive): w-full h-full fills the parent div
+									className="absolute top-0 left-0 pointer-events-none w-full h-full"
+									style={{
+										zIndex: zIndex,
+										opacity: layer.opacity / 100,
+										display: layer.visible ? "block" : "none",
+										mixBlendMode: layer.blendMode,
+									}}
+								/>
+							);
+						})}
+
+						<canvas
+							ref={tempCanvasRef}
+							width={CANVAS_WIDTH}
+							height={CANVAS_HEIGHT}
+							// CSS Size (Responsive) + touch-none to prevent scrolling on mobile while drawing
+							className="absolute top-0 left-0 w-full h-full cursor-crosshair touch-none"
+							style={{ zIndex: 9999 }}
+							onMouseDown={startDrawing}
+							onMouseMove={draw}
+							onMouseUp={stopDrawing}
+							onMouseLeave={stopDrawing}
+							// Add touch events for mobile support
+							onTouchStart={startDrawing}
+							onTouchMove={draw}
+							onTouchEnd={stopDrawing}
+						/>
 					</div>
 				</div>
 
@@ -689,12 +640,14 @@ export default function DrawingCanvas() {
 						activeLayerId={activeLayerId}
 						onLayersChange={(newLayers) => {
 							setLayers(newLayers);
-							renderAllLayers(newLayers);
+
+							addToHistory(newLayers);
 						}}
 						onActiveLayerChange={(layerId) => {
-							saveLayerData();
 							setActiveLayerId(layerId);
 						}}
+						onAddLayer={handleAddLayer}
+						onDeleteLayer={handleDeleteLayer}
 					/>
 				)}
 			</div>
