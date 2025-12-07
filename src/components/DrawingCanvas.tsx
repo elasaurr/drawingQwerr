@@ -52,8 +52,8 @@ export default function DrawingCanvas() {
 	const [brushSize, setBrushSize] = useState(20);
 	const [brushOpacity, setBrushOpacity] = useState(100);
 	const [isDrawing, setIsDrawing] = useState(false);
-	const [isErasing, setIsErasing] = useState(false);
 	const currentPath = useRef<{ x: number; y: number }[]>([]);
+	const lastPos = useRef<{ x: number; y: number } | null>(null);
 
 	const [history, setHistory] = useState<DrawingState[]>([]);
 	const [historyStep, setHistoryStep] = useState(-1);
@@ -172,6 +172,40 @@ export default function DrawingCanvas() {
 		});
 	}, [layers]); // Be careful: simple dependency on 'layers' might trigger re-paints often
 
+	// Helper: Interpolate points between two coordinates to prevent gaps
+	const getPointsOnLine = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+		const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+		const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+		const points = [];
+		// Step size: smaller = denser line, larger = faster performance
+		const step = 2;
+
+		for (let i = 0; i < distance; i += step) {
+			points.push({
+				x: p1.x + Math.cos(angle) * i,
+				y: p1.y + Math.sin(angle) * i,
+			});
+		}
+		return points;
+	};
+
+	const drawSprayPoint = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, opacity: number) => {
+		ctx.save();
+		const gradient = ctx.createRadialGradient(x, y, 0, x, y, size / 2);
+
+		const r = parseInt(color.slice(1, 3), 16);
+		const g = parseInt(color.slice(3, 5), 16);
+		const b = parseInt(color.slice(5, 7), 16);
+
+		gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${opacity})`);
+		gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${opacity * 0.5})`);
+		gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+		ctx.fillStyle = gradient;
+		ctx.fillRect(x - size / 2, y - size / 2, size, size);
+		ctx.restore();
+	};
+
 	const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		const canvas = tempCanvasRef.current;
 		if (!canvas) return { x: 0, y: 0 };
@@ -199,6 +233,7 @@ export default function DrawingCanvas() {
 
 		const pos = getMousePos(e);
 		setStartPos(pos);
+		lastPos.current = pos;
 		setIsDrawing(true);
 
 		currentPath.current = [pos];
@@ -210,17 +245,23 @@ export default function DrawingCanvas() {
 		ctx.lineJoin = "round";
 
 		if (tool === "eraser") {
-			setIsErasing(true);
 			ctx.strokeStyle = "#ffffff";
 			ctx.globalAlpha = 1;
+			ctx.shadowBlur = 0;
 			ctx.lineWidth = brushSize;
-			ctx.globalCompositeOperation = "source-over";
+			// ctx.globalCompositeOperation = "source-over";
 		} else {
-			setIsErasing(false);
 			ctx.strokeStyle = color;
-			ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
 			ctx.lineWidth = brushSize;
-			ctx.globalCompositeOperation = "source-over";
+			// ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
+			// ctx.globalCompositeOperation = "source-over";
+
+			if (selectedBrush.softness > 0.5 && tool === "pencil") {
+				ctx.shadowBlur = brushSize * selectedBrush.softness;
+				ctx.shadowColor = color;
+			} else {
+				ctx.shadowBlur = 0;
+			}
 		}
 
 		ctx.beginPath();
@@ -234,23 +275,86 @@ export default function DrawingCanvas() {
 
 		const pos = getMousePos(e);
 
-		if (tool === "pencil" || tool === "eraser") {
-			currentPath.current.push(pos);
+		if (tool === "line" || tool === "rectangle" || tool === "circle") {
 			if (!tempCanvasRef.current) return;
 			ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-			ctx.beginPath();
-			const points = currentPath.current;
-			if (points.length > 0) {
-				ctx.moveTo(points[0].x, points[0].y);
 
-				// Connect all points
-				for (let i = 1; i < points.length; i++) {
-					ctx.lineTo(points[i].x, points[i].y);
+			ctx.strokeStyle = color;
+			ctx.lineWidth = brushSize;
+			ctx.globalAlpha = brushOpacity / 100;
+			ctx.beginPath();
+
+			if (tool === "line") {
+				ctx.moveTo(startPos.x, startPos.y);
+				ctx.lineTo(pos.x, pos.y);
+			} else if (tool === "rectangle") {
+				ctx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
+			} else if (tool === "circle") {
+				const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
+				ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+			}
+			ctx.stroke();
+			return;
+		}
+
+		if (tool === "pencil" && (selectedBrush.id === "airbrush" || selectedBrush.id === "watercolor")) {
+			if (lastPos.current) {
+				const points = getPointsOnLine(lastPos.current, pos);
+				const baseOpacity = (brushOpacity / 100) * selectedBrush.opacity * 0.1;
+
+				points.forEach((point) => {
+					drawSprayPoint(ctx, point.x, point.y, brushSize, color, baseOpacity);
+				});
+			}
+			lastPos.current = pos;
+		} else {
+			currentPath.current.push(pos);
+
+			if (!tempCanvasRef.current) return;
+			ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
+
+			ctx.globalCompositeOperation = "source-over";
+			ctx.globalAlpha = (brushOpacity / 100) * (tool === "eraser" ? 1 : selectedBrush.opacity);
+
+			ctx.beginPath();
+
+			if (currentPath.current.length > 0) {
+				ctx.moveTo(currentPath.current[0].x, currentPath.current[0].y);
+
+				// Use quadratic curves for smoother lines than simple lineTo
+				for (let i = 1; i < currentPath.current.length - 1; i++) {
+					const p1 = currentPath.current[i];
+					const p2 = currentPath.current[i + 1];
+					const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+					ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
 				}
+
+				// Connect the last point
+				const last = currentPath.current[currentPath.current.length - 1];
+				ctx.lineTo(last.x, last.y);
 			}
 
 			ctx.stroke();
+			lastPos.current = pos;
 		}
+
+		// if (tool === "pencil" || tool === "eraser") {
+		// 	currentPath.current.push(pos);
+		// 	if (!tempCanvasRef.current) return;
+		// 	ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
+		// 	ctx.beginPath();
+		// 	const points = currentPath.current;
+		// 	if (points.length > 0) {
+		// 		ctx.moveTo(points[0].x, points[0].y);
+
+		// 		// Connect all points
+		// 		for (let i = 1; i < points.length; i++) {
+		// 			ctx.lineTo(points[i].x, points[i].y);
+		// 		}
+		// 	}
+
+		// 	ctx.stroke();
+		// }
 	};
 
 	const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -264,25 +368,25 @@ export default function DrawingCanvas() {
 		const pos = getMousePos(e);
 
 		// Handle Shapes
-		if (tool === "line" || tool === "rectangle" || tool === "circle") {
-			tempCtx.strokeStyle = color;
-			tempCtx.lineWidth = brushSize;
-			tempCtx.globalAlpha = brushOpacity / 100;
+		// if (tool === "line" || tool === "rectangle" || tool === "circle") {
+		// 	tempCtx.strokeStyle = color;
+		// 	tempCtx.lineWidth = brushSize;
+		// 	tempCtx.globalAlpha = brushOpacity / 100;
 
-			if (tool === "line") {
-				tempCtx.beginPath();
-				tempCtx.moveTo(startPos.x, startPos.y);
-				tempCtx.lineTo(pos.x, pos.y);
-				tempCtx.stroke();
-			} else if (tool === "rectangle") {
-				tempCtx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
-			} else if (tool === "circle") {
-				const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
-				tempCtx.beginPath();
-				tempCtx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-				tempCtx.stroke();
-			}
-		}
+		// 	if (tool === "line") {
+		// 		tempCtx.beginPath();
+		// 		tempCtx.moveTo(startPos.x, startPos.y);
+		// 		tempCtx.lineTo(pos.x, pos.y);
+		// 		tempCtx.stroke();
+		// 	} else if (tool === "rectangle") {
+		// 		tempCtx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
+		// 	} else if (tool === "circle") {
+		// 		const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
+		// 		tempCtx.beginPath();
+		// 		tempCtx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+		// 		tempCtx.stroke();
+		// 	}
+		// }
 
 		// Commit to Active Layer
 		if (activeLayerId) {
@@ -303,12 +407,9 @@ export default function DrawingCanvas() {
 				activeCtx.drawImage(tempCanvas, 0, 0);
 				activeCtx.restore();
 
-				// IMPORTANT: Get the updated data URL to save in state
 				const newImageData = activeCanvas.toDataURL();
-
 				const newLayers = layers.map((l) => (l.id === activeLayerId ? { ...l, imageData: newImageData } : l));
-
-				setLayers(newLayers); // This triggers the Auto-Save useEffect
+				setLayers(newLayers);
 
 				const newHistory = history.slice(0, historyStep + 1);
 				newHistory.push({ layers: JSON.parse(JSON.stringify(newLayers)) });
@@ -317,8 +418,8 @@ export default function DrawingCanvas() {
 			}
 		}
 
-		// Clear the temp canvas (overlay)
-		tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+		tempCtx?.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+		currentPath.current = []; // Reset path
 	};
 
 	const handleAddLayer = () => {
@@ -483,6 +584,10 @@ export default function DrawingCanvas() {
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	});
 
+	const clearStorage = () => {
+		localStorage.removeItem("drawing_session_state");
+	};
+
 	if (!canvasWidth || !canvasHeight) {
 		return <div className="h-screen flex items-center justify-center">Loading Canvas...</div>;
 	}
@@ -491,7 +596,7 @@ export default function DrawingCanvas() {
 		<div className="h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
 			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
-					<Link to="/dashboard">
+					<Link to="/dashboard" onClick={clearStorage}>
 						<Button variant="ghost" size="sm">
 							<Home className="w-4 h-4 mr-2" />
 							Dashboard
