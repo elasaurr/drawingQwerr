@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "./ui/button";
@@ -8,7 +8,7 @@ import { Badge } from "./ui/badge";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import LayerPanel, { Layer } from "./LayerPanel";
-import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Lock, Layers as LayersIcon } from "lucide-react";
+import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Crown, Lock, Layers as LayersIcon } from "lucide-react";
 
 type Tool = "pencil" | "eraser" | "line" | "rectangle" | "circle";
 
@@ -35,6 +35,9 @@ const brushes: BrushType[] = [
 	{ id: "airbrush", name: "Airbrush", isPremium: true, softness: 1, opacity: 0.3 },
 ];
 
+// const CANVAS_WIDTH = 1200;
+// const CANVAS_HEIGHT = 800;
+
 export default function DrawingCanvas() {
 	const tempCanvasRef = useRef<HTMLCanvasElement>(null);
 	const layerCanvasRefs = useRef<{ [key: string]: HTMLCanvasElement | null }>({});
@@ -52,8 +55,6 @@ export default function DrawingCanvas() {
 	const [brushSize, setBrushSize] = useState(20);
 	const [brushOpacity, setBrushOpacity] = useState(100);
 	const [isDrawing, setIsDrawing] = useState(false);
-	const [isErasing, setIsErasing] = useState(false);
-	const currentPath = useRef<{ x: number; y: number }[]>([]);
 
 	const [history, setHistory] = useState<DrawingState[]>([]);
 	const [historyStep, setHistoryStep] = useState(-1);
@@ -66,51 +67,9 @@ export default function DrawingCanvas() {
 	const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
 	useEffect(() => {
-		const savedSession = localStorage.getItem("drawing_session_state");
+		if (layers.length > 0) return;
 
-		if (savedSession) {
-			const parsedSession = JSON.parse(savedSession);
-			const sessionMatchesUrl = id ? parsedSession.drawingId === id : true;
-
-			if (sessionMatchesUrl) {
-				setLayers(parsedSession.layers);
-				setCanvasWidth(parsedSession.width);
-				setCanvasHeight(parsedSession.height);
-				setDrawingTitle(parsedSession.title);
-				setActiveLayerId(parsedSession.activeLayerId);
-				setHistory([{ layers: parsedSession.layers }]);
-				setHistoryStep(0);
-				return; // Stop here, we loaded from session
-			}
-		}
-
-		// Fallback: If no session, or ID mismatch, use standard loading logic
-		if (id) {
-			// Load from saved drawings DB (localStorage 'drawings')
-			const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
-			const drawing = drawings.find((d: any) => d.id === id);
-
-			if (drawing) {
-				setDrawingTitle(drawing.title);
-				// Set dimensions if stored, otherwise default
-				setCanvasWidth(drawing.width || 1200);
-				setCanvasHeight(drawing.height || 800);
-
-				if (drawing.layersData) {
-					setLayers(drawing.layersData);
-					if (drawing.layersData.length > 0) {
-						setActiveLayerId(drawing.layersData[0].id);
-					}
-					setHistory([{ layers: drawing.layersData }]);
-					setHistoryStep(0);
-				}
-			}
-		} else {
-			// New Drawing Initialization
-			const size = JSON.parse(localStorage.getItem("newCanvasSettings") || "null");
-			setCanvasWidth(size?.width || 1200);
-			setCanvasHeight(size?.height || 800);
-
+		if (!id) {
 			const initialId = crypto.randomUUID();
 			const initialLayer: Layer = {
 				id: initialId,
@@ -123,31 +82,32 @@ export default function DrawingCanvas() {
 			};
 			setLayers([initialLayer]);
 			setActiveLayerId(initialId);
+
 			setHistory([{ layers: [initialLayer] }]);
 			setHistoryStep(0);
 		}
+	}, []);
+
+	useEffect(() => {
+		if (!id) return;
+
+		const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
+		const drawing = drawings.find((d: any) => d.id === id);
+
+		if (drawing) {
+			setDrawingTitle(drawing.title);
+
+			if (drawing.layersData) {
+				setLayers(drawing.layersData);
+				if (drawing.layersData.length > 0) {
+					setActiveLayerId(drawing.layersData[0].id);
+				}
+				setHistory([{ layers: drawing.layersData }]);
+				setHistoryStep(0);
+			}
+		}
 	}, [id]);
 
-	// --- 2. NEW: Auto-Save Session Logic ---
-	useEffect(() => {
-		// Don't save empty states
-		if (layers.length === 0 || !canvasWidth || !canvasHeight) return;
-
-		const sessionState = {
-			drawingId: id || null, // Track which ID this session belongs to
-			layers: layers,
-			width: canvasWidth,
-			height: canvasHeight,
-			title: drawingTitle,
-			activeLayerId: activeLayerId,
-		};
-
-		// Debounce could be added here for performance if layers get very heavy,
-		// but for now, we save on every layer/title change.
-		localStorage.setItem("drawing_session_state", JSON.stringify(sessionState));
-	}, [layers, canvasWidth, canvasHeight, drawingTitle, activeLayerId, id]);
-
-	// --- Canvas Rendering Logic ---
 	useEffect(() => {
 		layers.forEach((layer) => {
 			const canvas = layerCanvasRefs.current[layer.id];
@@ -156,7 +116,6 @@ export default function DrawingCanvas() {
 			const ctx = canvas.getContext("2d");
 			if (!ctx) return;
 
-			// If we have imageData (from history or load), paint it
 			if (layer.imageData) {
 				const img = new Image();
 				img.onload = () => {
@@ -165,12 +124,18 @@ export default function DrawingCanvas() {
 				};
 				img.src = layer.imageData;
 			} else {
-				// We don't clearRect here if it's empty, because it might be a fresh layer
-				// that we want to keep drawing on without flashing
-				// Only clear if explicitly necessary or handle via state
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
 			}
 		});
-	}, [layers]); // Be careful: simple dependency on 'layers' might trigger re-paints often
+	}, [layers]);
+
+	useEffect(() => {
+		const size = JSON.parse(localStorage.getItem("newCanvasSettings") || "null");
+		if (!size) return;
+
+		setCanvasWidth(size.width);
+		setCanvasHeight(size.height);
+	});
 
 	const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		const canvas = tempCanvasRef.current;
@@ -201,8 +166,6 @@ export default function DrawingCanvas() {
 		setStartPos(pos);
 		setIsDrawing(true);
 
-		currentPath.current = [pos];
-
 		const ctx = tempCanvasRef.current?.getContext("2d");
 		if (!ctx) return;
 
@@ -210,13 +173,11 @@ export default function DrawingCanvas() {
 		ctx.lineJoin = "round";
 
 		if (tool === "eraser") {
-			setIsErasing(true);
-			ctx.strokeStyle = "#ffffff";
+			ctx.strokeStyle = "#000000";
 			ctx.globalAlpha = 1;
 			ctx.lineWidth = brushSize;
 			ctx.globalCompositeOperation = "source-over";
 		} else {
-			setIsErasing(false);
 			ctx.strokeStyle = color;
 			ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
 			ctx.lineWidth = brushSize;
@@ -235,20 +196,7 @@ export default function DrawingCanvas() {
 		const pos = getMousePos(e);
 
 		if (tool === "pencil" || tool === "eraser") {
-			currentPath.current.push(pos);
-			if (!tempCanvasRef.current) return;
-			ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-			ctx.beginPath();
-			const points = currentPath.current;
-			if (points.length > 0) {
-				ctx.moveTo(points[0].x, points[0].y);
-
-				// Connect all points
-				for (let i = 1; i < points.length; i++) {
-					ctx.lineTo(points[i].x, points[i].y);
-				}
-			}
-
+			ctx.lineTo(pos.x, pos.y);
 			ctx.stroke();
 		}
 	};
@@ -263,7 +211,6 @@ export default function DrawingCanvas() {
 
 		const pos = getMousePos(e);
 
-		// Handle Shapes
 		if (tool === "line" || tool === "rectangle" || tool === "circle") {
 			tempCtx.strokeStyle = color;
 			tempCtx.lineWidth = brushSize;
@@ -284,7 +231,6 @@ export default function DrawingCanvas() {
 			}
 		}
 
-		// Commit to Active Layer
 		if (activeLayerId) {
 			const activeCanvas = layerCanvasRefs.current[activeLayerId];
 			const activeCtx = activeCanvas?.getContext("2d");
@@ -303,12 +249,11 @@ export default function DrawingCanvas() {
 				activeCtx.drawImage(tempCanvas, 0, 0);
 				activeCtx.restore();
 
-				// IMPORTANT: Get the updated data URL to save in state
 				const newImageData = activeCanvas.toDataURL();
 
 				const newLayers = layers.map((l) => (l.id === activeLayerId ? { ...l, imageData: newImageData } : l));
 
-				setLayers(newLayers); // This triggers the Auto-Save useEffect
+				setLayers(newLayers);
 
 				const newHistory = history.slice(0, historyStep + 1);
 				newHistory.push({ layers: JSON.parse(JSON.stringify(newLayers)) });
@@ -317,7 +262,6 @@ export default function DrawingCanvas() {
 			}
 		}
 
-		// Clear the temp canvas (overlay)
 		tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
 	};
 
@@ -391,10 +335,8 @@ export default function DrawingCanvas() {
 
 	const flattenCanvas = (): string => {
 		const tempC = document.createElement("canvas");
-		if (!canvasHeight || !canvasWidth) return "";
-
-		tempC.width = canvasWidth;
-		tempC.height = canvasHeight;
+		tempC.width = canvasWidth; //CANVAS_WIDTH;
+		tempC.height = canvasHeight; //CANVAS_HEIGHT;
 		const ctx = tempC.getContext("2d");
 		if (!ctx) return "";
 
@@ -408,7 +350,7 @@ export default function DrawingCanvas() {
 			if (layerCanvas) {
 				ctx.save();
 				ctx.globalAlpha = layer.opacity / 100;
-				ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
+				ctx.globalCompositeOperation = layer.blendMode;
 				ctx.drawImage(layerCanvas, 0, 0);
 				ctx.restore();
 			}
@@ -418,31 +360,30 @@ export default function DrawingCanvas() {
 	};
 
 	const saveDrawing = () => {
-		// Clean up the autosave session since we are performing a manual save
-		// (Optional: you might want to keep it, but usually saving commits the state)
-
-		if (!user) return; // Or handle local-only mode
+		if (!user) return;
 		const thumbnail = flattenCanvas();
 		const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
-
-		const newDrawingData = {
-			id: id || Date.now().toString(),
-			title: drawingTitle,
-			thumbnail,
-			createdAt: new Date().toISOString(),
-			userId: user.id,
-			layersData: layers,
-			width: canvasWidth, // Save dimensions too!
-			height: canvasHeight,
-		};
 
 		if (id) {
 			const index = drawings.findIndex((d: any) => d.id === id);
 			if (index !== -1) {
-				drawings[index] = { ...drawings[index], ...newDrawingData };
+				drawings[index] = {
+					...drawings[index],
+					title: drawingTitle,
+					thumbnail,
+					layersData: layers,
+				};
 			}
 		} else {
-			drawings.push(newDrawingData);
+			const newDrawing = {
+				id: Date.now().toString(),
+				title: drawingTitle,
+				thumbnail,
+				createdAt: new Date().toISOString(),
+				userId: user.id,
+				layersData: layers,
+			};
+			drawings.push(newDrawing);
 		}
 
 		localStorage.setItem("drawings", JSON.stringify(drawings));
@@ -473,7 +414,6 @@ export default function DrawingCanvas() {
 		} else if (e.key === "y" && (e.metaKey || e.ctrlKey)) {
 			redo();
 		} else if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
 			saveDrawing();
 		}
 	};
@@ -483,12 +423,8 @@ export default function DrawingCanvas() {
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	});
 
-	if (!canvasWidth || !canvasHeight) {
-		return <div className="h-screen flex items-center justify-center">Loading Canvas...</div>;
-	}
-
 	return (
-		<div className="h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
+		<div className="h-screen flex flex-col bg-gray-100">
 			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
 					<Link to="/dashboard">
@@ -674,20 +610,30 @@ export default function DrawingCanvas() {
 					<div
 						className="relative bg-white shadow-2xl max-w-full"
 						style={{
+							// 1. Allow the container to be responsive (100% width)
 							width: "100%",
+							// 2. Cap the size at the actual canvas resolution so it doesn't get pixelated
+							// maxWidth: `${CANVAS_WIDTH}px`,
 							maxWidth: `${canvasWidth}px`,
+							// 3. Force the aspect ratio so the height calculates automatically based on width
+							// aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}`,
 							aspectRatio: `${canvasWidth}/${canvasHeight}`,
 						}}>
 						<div className="absolute inset-0 bg-white pointer-events-none" />
 
 						{layers.map((layer, index) => {
 							const zIndex = layers.length - index;
+
 							return (
 								<canvas
 									key={layer.id}
 									ref={(el) => (layerCanvasRefs.current[layer.id] = el)}
+									// Internal Resolution (High Quality)
 									width={canvasWidth}
 									height={canvasHeight}
+									// width={CANVAS_WIDTH}
+									// height={CANVAS_HEIGHT}
+									// CSS Size (Responsive): w-full h-full fills the parent div
 									className="absolute top-0 left-0 pointer-events-none w-full h-full"
 									style={{
 										zIndex: zIndex,
@@ -703,11 +649,19 @@ export default function DrawingCanvas() {
 							ref={tempCanvasRef}
 							width={canvasWidth}
 							height={canvasHeight}
+							// width={CANVAS_WIDTH}
+							// height={CANVAS_HEIGHT}
+							// CSS Size (Responsive) + touch-none to prevent scrolling on mobile while drawing
 							className="absolute top-0 left-0 w-full h-full cursor-crosshair touch-none"
 							style={{ zIndex: 9999 }}
 							onMouseDown={startDrawing}
 							onMouseMove={draw}
 							onMouseUp={stopDrawing}
+							onMouseLeave={stopDrawing}
+							// Add touch events for mobile support
+							onTouchStart={startDrawing}
+							onTouchMove={draw}
+							onTouchEnd={stopDrawing}
 						/>
 					</div>
 				</div>
@@ -718,6 +672,7 @@ export default function DrawingCanvas() {
 						activeLayerId={activeLayerId}
 						onLayersChange={(newLayers) => {
 							setLayers(newLayers);
+
 							addToHistory(newLayers);
 						}}
 						onActiveLayerChange={(layerId) => {

@@ -12,7 +12,7 @@ export interface Layer {
 	name: string;
 	visible: boolean;
 	opacity: number;
-	blendMode: GlobalCompositeOperation;
+	blendMode: string;
 	locked: boolean;
 	imageData: string | null;
 }
@@ -121,6 +121,7 @@ export default function LayerPanel({ layers, activeLayerId, onLayersChange, onAc
 								<div className="w-10 h-10 bg-white rounded border border-gray-600 shrink-0 overflow-hidden relative">
 									{/* Thumbnail preview */}
 									{layer.imageData && <img src={layer.imageData} className="w-full h-full object-cover" alt="layer preview" />}
+									{!layer.imageData && <div className="w-50 h-50 flex items-center justify-center"></div>}
 								</div>
 
 								<div className="flex-1 min-w-0">

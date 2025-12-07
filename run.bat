@@ -1,4 +1,6 @@
 @echo off
+echo cls
+
 echo Starting Backend...
 start cmd /k "cd backend && npm run dev"
 
