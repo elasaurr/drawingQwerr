@@ -337,24 +337,6 @@ export default function DrawingCanvas() {
 			ctx.stroke();
 			lastPos.current = pos;
 		}
-
-		// if (tool === "pencil" || tool === "eraser") {
-		// 	currentPath.current.push(pos);
-		// 	if (!tempCanvasRef.current) return;
-		// 	ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-		// 	ctx.beginPath();
-		// 	const points = currentPath.current;
-		// 	if (points.length > 0) {
-		// 		ctx.moveTo(points[0].x, points[0].y);
-
-		// 		// Connect all points
-		// 		for (let i = 1; i < points.length; i++) {
-		// 			ctx.lineTo(points[i].x, points[i].y);
-		// 		}
-		// 	}
-
-		// 	ctx.stroke();
-		// }
 	};
 
 	const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -364,29 +346,6 @@ export default function DrawingCanvas() {
 		const tempCanvas = tempCanvasRef.current;
 		const tempCtx = tempCanvas?.getContext("2d");
 		if (!tempCanvas || !tempCtx) return;
-
-		const pos = getMousePos(e);
-
-		// Handle Shapes
-		// if (tool === "line" || tool === "rectangle" || tool === "circle") {
-		// 	tempCtx.strokeStyle = color;
-		// 	tempCtx.lineWidth = brushSize;
-		// 	tempCtx.globalAlpha = brushOpacity / 100;
-
-		// 	if (tool === "line") {
-		// 		tempCtx.beginPath();
-		// 		tempCtx.moveTo(startPos.x, startPos.y);
-		// 		tempCtx.lineTo(pos.x, pos.y);
-		// 		tempCtx.stroke();
-		// 	} else if (tool === "rectangle") {
-		// 		tempCtx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
-		// 	} else if (tool === "circle") {
-		// 		const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
-		// 		tempCtx.beginPath();
-		// 		tempCtx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-		// 		tempCtx.stroke();
-		// 	}
-		// }
 
 		// Commit to Active Layer
 		if (activeLayerId) {
@@ -798,7 +757,7 @@ export default function DrawingCanvas() {
 										zIndex: zIndex,
 										opacity: layer.opacity / 100,
 										display: layer.visible ? "block" : "none",
-										mixBlendMode: layer.blendMode,
+										mixBlendMode: layer.blendMode as any,
 									}}
 								/>
 							);
