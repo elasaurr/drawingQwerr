@@ -9,6 +9,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import LayerPanel, { Layer } from "./LayerPanel";
 import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Lock, Layers as LayersIcon } from "lucide-react";
+import { drawingsService, Drawing } from "../services/drawingsService";
 
 type Tool = "pencil" | "eraser" | "line" | "rectangle" | "circle";
 
@@ -65,6 +66,8 @@ export default function DrawingCanvas() {
 	const [layers, setLayers] = useState<Layer[]>([]);
 	const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
+	const [isSaving, setIsSaving] = useState(false);
+
 	useEffect(() => {
 		const savedSession = localStorage.getItem("drawing_session_state");
 
@@ -85,26 +88,45 @@ export default function DrawingCanvas() {
 		}
 
 		// Fallback: If no session, or ID mismatch, use standard loading logic
-		if (id) {
-			// Load from saved drawings DB (localStorage 'drawings')
-			const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
-			const drawing = drawings.find((d: any) => d.id === id);
+		if (id && user) {
+			const fetchDrawing = async () => {
+				try {
+					const response = await drawingsService.getDrawing(user.id, id);
 
-			if (drawing) {
-				setDrawingTitle(drawing.title);
-				// Set dimensions if stored, otherwise default
-				setCanvasWidth(drawing.width || 1200);
-				setCanvasHeight(drawing.height || 800);
+					if (response && response.drawingsData) {
+						const { drawingsData, layers: rawLayers } = response;
 
-				if (drawing.layersData) {
-					setLayers(drawing.layersData);
-					if (drawing.layersData.length > 0) {
-						setActiveLayerId(drawing.layersData[0].id);
+						setDrawingTitle(drawingsData.title);
+						setCanvasWidth(drawingsData.width);
+						setCanvasHeight(drawingsData.height);
+
+						if (rawLayers && rawLayers.length > 0) {
+							// 1. MAP DB KEYS TO FRONTEND KEYS
+							const formattedLayers: Layer[] = rawLayers.map((l: any) => ({
+								id: l.layer_id,
+								name: l.name,
+								visible: l.visible,
+								opacity: l.opacity,
+								blendMode: l.blend_mode || l.blendMode || "normal",
+								locked: l.locked,
+								imageData: l.image_data || null,
+								index: l.index,
+							}));
+
+							// 2. SORT LAYERS BY INDEX (DB doesn't guarantee order)
+							formattedLayers.sort((a, b) => a.index - b.index);
+							setLayers(formattedLayers);
+							setActiveLayerId(formattedLayers[0].id);
+							setHistory([{ layers: formattedLayers }]);
+							setHistoryStep(0);
+						}
 					}
-					setHistory([{ layers: drawing.layersData }]);
-					setHistoryStep(0);
+				} catch (err) {
+					console.error("Failed to load drawing:", err);
 				}
-			}
+			};
+
+			fetchDrawing();
 		} else {
 			// New Drawing Initialization
 			const size = JSON.parse(localStorage.getItem("newCanvasSettings") || "null");
@@ -120,13 +142,14 @@ export default function DrawingCanvas() {
 				blendMode: "normal",
 				locked: false,
 				imageData: null,
+				index: 0,
 			};
 			setLayers([initialLayer]);
 			setActiveLayerId(initialId);
 			setHistory([{ layers: [initialLayer] }]);
 			setHistoryStep(0);
 		}
-	}, [id]);
+	}, [id, user]);
 
 	// --- 2. NEW: Auto-Save Session Logic ---
 	useEffect(() => {
@@ -391,20 +414,30 @@ export default function DrawingCanvas() {
 			blendMode: "normal",
 			locked: false,
 			imageData: null,
+			index: 0,
 		};
-
-		const newLayers = [newLayer, ...layers];
+		const newLayersIndexes = layers.map((l) => {
+			l.index += 1;
+			return l;
+		});
+		const newLayers = [newLayer, ...newLayersIndexes];
 		setLayers(newLayers);
 		setActiveLayerId(newLayerId);
 		addToHistory(newLayers);
 	};
 
 	const handleDeleteLayer = (layerIdToDelete: string) => {
-		const newLayers = layers.filter((l) => l.id !== layerIdToDelete);
+		const filtered = layers.filter((l) => l.id !== layerIdToDelete);
+		const newLayers = filtered.map((layer, i) => ({
+			...layer,
+			index: i,
+		}));
+
 		let newActiveId = activeLayerId;
 		if (activeLayerId === layerIdToDelete) {
 			newActiveId = newLayers.length > 0 ? newLayers[0].id : null;
 		}
+
 		setLayers(newLayers);
 		setActiveLayerId(newActiveId);
 		addToHistory(newLayers);
@@ -477,36 +510,32 @@ export default function DrawingCanvas() {
 		return tempC.toDataURL();
 	};
 
-	const saveDrawing = () => {
+	const saveDrawing = async (e: React.FormEvent) => {
 		// Clean up the autosave session since we are performing a manual save
 		// (Optional: you might want to keep it, but usually saving commits the state)
-
-		if (!user) return; // Or handle local-only mode
+		e.preventDefault();
+		if (!user || !canvasWidth || !canvasHeight) return; // Or handle local-only mode
+		setIsSaving(true);
 		const thumbnail = flattenCanvas();
-		const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
+		// const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
 
-		const newDrawingData = {
-			id: id || Date.now().toString(),
+		const newDrawingData: Drawing = {
+			drawingId: null,
 			title: drawingTitle,
-			thumbnail,
+			thumbnail: thumbnail,
 			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
 			userId: user.id,
-			layersData: layers,
-			width: canvasWidth, // Save dimensions too!
+			width: canvasWidth,
 			height: canvasHeight,
 		};
 
-		if (id) {
-			const index = drawings.findIndex((d: any) => d.id === id);
-			if (index !== -1) {
-				drawings[index] = { ...drawings[index], ...newDrawingData };
-			}
-		} else {
-			drawings.push(newDrawingData);
-		}
+		const res = await drawingsService.saveDrawing(user.id, newDrawingData, layers);
 
-		localStorage.setItem("drawings", JSON.stringify(drawings));
 		alert("Drawing saved successfully!");
+		console.log("res: ", res);
+
+		setIsSaving(false);
 	};
 
 	const downloadDrawing = () => {
@@ -527,13 +556,13 @@ export default function DrawingCanvas() {
 		setSelectedBrush(brush);
 	};
 
+	// Keyboard Shortcuts
 	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
 			undo();
 		} else if (e.key === "y" && (e.metaKey || e.ctrlKey)) {
 			redo();
 		} else if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
 			saveDrawing();
 		}
 	};
@@ -552,7 +581,9 @@ export default function DrawingCanvas() {
 	}
 
 	return (
-		<div className="h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
+		<div className="relative h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
+			{isSaving && <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999"></div>}
+
 			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
 					<Link to="/dashboard" onClick={clearStorage}>
@@ -720,7 +751,7 @@ export default function DrawingCanvas() {
 											}`}>
 											<div className="flex items-center justify-between">
 												<span className="text-sm">{brush.name}</span>
-												{brush.isPremium && (
+												{brush.isPremium && !user?.premium_expiry && (
 													<Badge variant="secondary">
 														<Lock className="w-3 h-3" />
 													</Badge>
@@ -734,7 +765,7 @@ export default function DrawingCanvas() {
 					</Tabs>
 				</div>
 
-				<div className="flex-1 p-4 md:p-8 overflow-auto bg-gray-200 flex items-center justify-center">
+				<div className="flex-1 p-4 md:p-8 overflow-auto bg-gray-200 flex items-center justify-center w-full h-full">
 					<div
 						className="relative bg-white shadow-2xl max-w-full"
 						style={{
@@ -748,7 +779,7 @@ export default function DrawingCanvas() {
 							const zIndex = layers.length - index;
 							return (
 								<canvas
-									key={layer.id}
+									key={`index:${layer.index}`}
 									ref={(el) => (layerCanvasRefs.current[layer.id] = el)}
 									width={canvasWidth}
 									height={canvasHeight}

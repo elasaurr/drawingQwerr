@@ -1,6 +1,18 @@
 const express = require("express");
 const router = express.Router();
 const supabase = require("../supabaseClient");
+const crypto = require("crypto");
+
+// const LAYER = {
+// 	layer_id: uuid,
+// 	drawing_id: uuid,
+// 	name: String,
+// 	visible: Boolean,
+// 	locked: Boolean,
+// 	opacity: Number,
+// 	blend_mode: String,
+// 	image_data: String,
+// };
 
 // Utility to convert base64 dataURL to Buffer
 function dataURLToBuffer(dataURL) {
@@ -26,9 +38,24 @@ router.get("/:userId", async (req, res) => {
 router.get("/:userId/:drawingId", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
-		const { data, error } = await supabase.from("drawings").select("*").eq("id", drawingId).eq("user_id", userId).single();
+		const data = {};
+		console.log("userId:", userId, "drawingId:", drawingId);
 
-		if (error) throw error;
+		const { data: drawingsData, error: drawingsError } = await supabase
+			.from("drawings")
+			.select("*")
+			.eq("id", drawingId)
+			.eq("user_id", userId)
+			.single();
+		if (drawingsError) throw drawingsError;
+
+		const { data: layersData, error: layerError } = await supabase.from("layers").select("*").eq("drawing_id", drawingId);
+		if (layerError) throw layerError;
+
+		data.drawingsData = drawingsData;
+		data.layers = layersData;
+
+		console.log("\ndata:", data, "\n");
 
 		res.json(data);
 	} catch (err) {
@@ -56,30 +83,59 @@ router.get("/:userId/:drawingId/url", async (req, res) => {
 // Create a new drawing
 router.post("/", async (req, res) => {
 	try {
-		const { userId, title, width, height, thumbnail_path, createdAt } = req.body;
-		const filePath = `${userId}/${encodeURIComponent(drawingId)}.png`;
-		const buffer = dataURLToBuffer(imageData);
+		const { userId, title, thumbnail, width, height, createdAt, layers } = req.body;
+
+		const drawingUUID = crypto.randomUUID();
+
+		const filePath = `${userId}/${encodeURIComponent(drawingUUID)}.png`;
+		const buffer = dataURLToBuffer(thumbnail);
+		let data = {};
 
 		// Upload image to storage
 		const { data: storageData, error: storageError } = await supabase.storage
 			.from("drawings")
 			.upload(filePath, buffer, { contentType: "image/png" });
-
 		if (storageError) throw storageError;
+		data.storageData = storageData;
 
 		// Insert metadata in database
-		const { data, error: dbError } = await supabase.from("drawings").insert({
-			id: drawingId,
+		const { data: dataDrawing, error: dbDrawingError } = await supabase.from("drawings").insert({
+			id: drawingUUID,
 			user_id: userId,
 			title,
+			width,
+			height,
 			thumbnail_path: thumbnail,
 			created_at: createdAt,
 			updated_at: createdAt,
 		});
 
-		if (dbError) throw dbError;
+		if (dbDrawingError) throw dbDrawingError;
+		data.dataDrawing = dataDrawing;
+		data.drawingId = drawingUUID;
 
-		res.status(201).json({ message: "Drawing created successfully", data });
+		if (!Array.isArray(layers) || layers.length === 0) {
+			throw new Error("layers must be a non-empty array");
+		}
+
+		layers.forEach((layer) => {
+			layer.layer_id = crypto.randomUUID();
+			layer.drawing_id = drawingUUID;
+			layer.blend_mode = layer.blendMode;
+			layer.image_data = layer.imageData;
+			delete layer.imageData;
+			delete layer.id;
+			delete layer.blendMode;
+		});
+
+		// Insert layers in database
+		const { data: dataLayers, error: dbLayersError } = await supabase.from("layers").insert(layers);
+		if (dbLayersError) throw dbLayersError;
+		data.dataLayers = dataLayers;
+
+		// console.log("data:", data);
+
+		res.status(201).json({ message: "Drawing created successfully", data: data });
 	} catch (err) {
 		res.status(500).json({ error: err.message });
 	}

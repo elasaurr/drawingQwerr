@@ -10,15 +10,7 @@ import NewCanvasDialog from "./NewCanvasDialog";
 import { useLocation } from "react-router-dom";
 import { getDrawings, deleteDrawing } from "../api/drawings";
 import Spinner from "./ui/spinner";
-
-interface Drawing {
-	id: string;
-	title: string;
-	thumbnail: string;
-	createdAt: string;
-	updatedAt: string;
-	userId: string;
-}
+import { Drawing } from "../services/drawingsService";
 
 export default function Dashboard() {
 	const { user, logout } = useAuth();
@@ -174,14 +166,14 @@ export default function Dashboard() {
 							<Card key={drawing.id} className="overflow-hidden group cursor-pointer hover:shadow-lg transition-shadow">
 								<Link to={`/draw/${drawing.id}`} className={isDeleting ? "pointer-events-none" : ""}>
 									<div className="aspect-square bg-gray-100 relative overflow-hidden">
-										<img src={drawing.thumbnail} alt={drawing.title} className="w-full h-full object-cover" />
+										<img src={drawing.thumbnail_path} alt={drawing.title} className="w-full h-full object-cover" />
 									</div>
 								</Link>
 								<CardContent className="p-4">
 									<div className="flex justify-between items-start gap-2">
 										<div className="flex-1 min-w-0">
 											<h3 className="truncate mb-1">{drawing.title}</h3>
-											<p className="text-sm text-gray-500">{new Date(drawing.updatedAt).toLocaleDateString()}</p>
+											<p className="text-sm text-gray-500">{new Date(drawing.updated_at).toLocaleDateString()}</p>
 										</div>
 										<Button
 											disabled={isDeleting}

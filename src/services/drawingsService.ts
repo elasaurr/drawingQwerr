@@ -1,35 +1,23 @@
 import * as drawingsApi from "../api/drawings";
+import { Layer } from "../components/LayerPanel";
 
-interface Drawing {
-	id: string;
+export interface Drawing {
+	drawingId: string | null;
 	userId: string;
 	title: string;
+	width: number;
+	height: number;
 	thumbnail: string;
 	createdAt: string;
 	updatedAt: string;
 }
 
-interface Layers {
-	id: string;
-	drawingId: string;
-	name: string;
-	order: number;
-	visible: boolean;
-	opacity: number;
-	blendMode: string;
-	image_path: string;
-	locked: boolean;
-}
-
 export const drawingsService = {
-	async saveDrawing(userId: string, drawing: Drawing) {
-		if (drawing.id) {
-			// Update existing
-			return drawingsApi.updateDrawing(drawing.id, userId, drawing.title, drawing.imageData);
+	async saveDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
+		if (drawing.drawingId) {
+			return drawingsApi.updateDrawing(userId, drawing, layers);
 		} else {
-			// Create new
-			const newId = drawing.id || Date.now().toString();
-			return drawingsApi.createDrawing(userId, drawing.imageData, newId, drawing.title, drawing.thumbnail, drawing.createdAt);
+			return drawingsApi.createDrawing(userId, drawing, layers);
 		}
 	},
 

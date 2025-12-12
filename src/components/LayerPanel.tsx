@@ -15,6 +15,7 @@ export interface Layer {
 	blendMode: string;
 	locked: boolean;
 	imageData: string | null;
+	index: number;
 }
 
 interface LayerPanelProps {
@@ -36,15 +37,23 @@ export default function LayerPanel({ layers, activeLayerId, onLayersChange, onAc
 		if (layerIndex === -1) return;
 
 		const layer = layers[layerIndex];
+
 		const newLayer: Layer = {
 			...layer,
 			id: crypto.randomUUID(),
 			name: `${layer.name} copy`,
+			index: layerIndex + 1,
 		};
 
 		const newLayers = [...layers];
-		newLayers.splice(layerIndex, 0, newLayer);
-		onLayersChange(newLayers);
+		newLayers.splice(layerIndex + 1, 0, newLayer);
+
+		const updatedLayers = newLayers.map((l, i) => ({
+			...l,
+			index: i,
+		}));
+
+		onLayersChange(updatedLayers);
 	};
 
 	const deleteLayer = (layerId: string) => {
@@ -72,9 +81,17 @@ export default function LayerPanel({ layers, activeLayerId, onLayersChange, onAc
 		const newIndex = direction === "up" ? index - 1 : index + 1;
 		if (newIndex < 0 || newIndex >= layers.length) return;
 
+		// clone and swap layers
 		const newLayers = [...layers];
 		[newLayers[index], newLayers[newIndex]] = [newLayers[newIndex], newLayers[index]];
-		onLayersChange(newLayers);
+
+		// update each layer.index to match its actual position
+		const updatedLayers = newLayers.map((layer, i) => ({
+			...layer,
+			index: i,
+		}));
+
+		onLayersChange(updatedLayers);
 	};
 
 	const updateLayerName = (layerId: string, name: string) => {
@@ -112,7 +129,7 @@ export default function LayerPanel({ layers, activeLayerId, onLayersChange, onAc
 				<div className="p-2 space-y-2">
 					{layers.map((layer, index) => (
 						<div
-							key={layer.id}
+							key={layer.index}
 							className={`bg-gray-800 rounded-lg border-2 transition-all cursor-pointer ${
 								layer.id === activeLayerId ? "border-blue-500" : "border-gray-700 hover:border-gray-600"
 							}`}

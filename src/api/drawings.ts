@@ -1,5 +1,8 @@
 import axios from "axios";
 import { API_BASE_URL } from "../constants";
+import { Layer } from "../components/LayerPanel";
+import { Drawing } from "../services/drawingsService";
+import { headers } from "../../backend/supabaseClient";
 
 const API_URL = `${API_BASE_URL}/drawings`;
 
@@ -32,28 +35,34 @@ export async function getDrawingImgUrl(userId: string, drawingId: string) {
 	}
 }
 
-export async function createDrawing(userId: string, imageData: string, drawingId: string, title: string, thumbnail: string, createdAt: string) {
+export async function createDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
+	console.log("Create Drawing:", drawing);
+
 	try {
-		const res = await axios.post(`${API_URL}`, {
+		const res = await axios.post(`${API_URL}/`, {
 			userId,
-			imageData,
-			drawingId,
-			title,
-			thumbnail,
-			createdAt,
+			title: drawing.title,
+			thumbnail: drawing.thumbnail,
+			width: drawing.width,
+			height: drawing.height,
+			createdAt: drawing.createdAt,
+			layers,
 		});
+		console.log("Create Drawing Response:", res.data);
 		return res.data;
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || err.message);
 	}
 }
 
-export async function updateDrawing(drawingId: string, userId: string, title: string, imageData: string) {
+export async function updateDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
+	console.log("Update Drawing:", drawing);
+
 	try {
-		const res = await axios.put(`${API_URL}/${drawingId}`, {
+		if (!drawing.drawingId || !drawing) return;
+		const res = await axios.put(`${API_URL}/${drawing.drawingId}`, {
 			userId,
-			title,
-			imageData,
+			drawing,
 		});
 		return res.data;
 	} catch (err: any) {

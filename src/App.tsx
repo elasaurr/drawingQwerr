@@ -21,7 +21,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 	return !user ? <>{children}</> : <Navigate to="/dashboard" />;
 }
 
-export default function Appa() {
+export default function App() {
 	return (
 		<AuthProvider>
 			<Router>
