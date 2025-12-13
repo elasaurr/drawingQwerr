@@ -2,7 +2,6 @@ import axios from "axios";
 import { API_BASE_URL } from "../constants";
 import { Layer } from "../components/LayerPanel";
 import { Drawing } from "../services/drawingsService";
-import { headers } from "../../backend/supabaseClient";
 
 const API_URL = `${API_BASE_URL}/drawings`;
 
@@ -36,7 +35,7 @@ export async function getDrawingImgUrl(userId: string, drawingId: string) {
 }
 
 export async function createDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
-	console.log("Create Drawing:", drawing);
+	console.log("drawings.ts: Create Drawing:", drawing);
 
 	try {
 		const res = await axios.post(`${API_URL}/`, {
@@ -55,14 +54,16 @@ export async function createDrawing(userId: string, drawing: Drawing, layers: La
 	}
 }
 
-export async function updateDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
-	console.log("Update Drawing:", drawing);
+export async function updateDrawing(userId: string, drawingId: string, title: string, thumbnail: string, layers: Layer[]) {
+	console.log("drawings.ts: Update Drawing:", drawingId);
 
 	try {
-		if (!drawing.drawingId || !drawing) return;
-		const res = await axios.put(`${API_URL}/${drawing.drawingId}`, {
+		if (!drawingId) return;
+		const res = await axios.put(`${API_URL}/${drawingId}`, {
 			userId,
-			drawing,
+			title,
+			thumbnail,
+			layers,
 		});
 		return res.data;
 	} catch (err: any) {
@@ -73,6 +74,8 @@ export async function updateDrawing(userId: string, drawing: Drawing, layers: La
 export async function deleteDrawing(drawingId: string, userId: string) {
 	try {
 		const res = await axios.delete(`${API_URL}/${userId}/${drawingId}`);
+		console.log("drawings.ts Delete Drawing Response:", res.data);
+
 		return res.data;
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || err.message);

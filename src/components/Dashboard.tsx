@@ -8,7 +8,8 @@ import { Badge } from "./ui/badge";
 import { Palette, Plus, User, LogOut, Trash2, Crown } from "lucide-react";
 import NewCanvasDialog from "./NewCanvasDialog";
 import { useLocation } from "react-router-dom";
-import { getDrawings, deleteDrawing } from "../api/drawings";
+// import { getDrawings, deleteDrawing } from "../api/drawings";
+import { drawingsService } from "../services/drawingsService";
 import Spinner from "./ui/spinner";
 import { Drawing } from "../services/drawingsService";
 
@@ -32,7 +33,7 @@ export default function Dashboard() {
 				return;
 			}
 
-			const userDrawings = await getDrawings(user.id);
+			const userDrawings = await drawingsService.getDrawings(user.id);
 			// console.log("loadDrawings() user.id:", user.id);
 			// console.log("loadDrawings() userDrawings:", userDrawings);
 
@@ -48,14 +49,10 @@ export default function Dashboard() {
 			setIsDeleting(true);
 			if (!user) return;
 
-			const deleted = await deleteDrawing(id, user.id);
-			if (deleted === "deleted successfully") {
-				alert("Drawing deleted successfully!");
-			} else {
-				alert("Error deleting drawing!");
-			}
-			setIsDeleting(false);
+			const deleted = await drawingsService.deleteDrawing(user.id, id);
+			alert(deleted.message);
 			loadDrawings();
+			setIsDeleting(false);
 		} catch (error) {
 			console.error(`Dashboard error: handleDelete(): ${error}`);
 		}

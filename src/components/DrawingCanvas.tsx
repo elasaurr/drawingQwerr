@@ -8,7 +8,7 @@ import { Badge } from "./ui/badge";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import LayerPanel, { Layer } from "./LayerPanel";
-import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Lock, Layers as LayersIcon } from "lucide-react";
+import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Lock, LockOpen, Layers as LayersIcon } from "lucide-react";
 import { drawingsService, Drawing } from "../services/drawingsService";
 
 type Tool = "pencil" | "eraser" | "line" | "rectangle" | "circle";
@@ -35,6 +35,9 @@ const brushes: BrushType[] = [
 	{ id: "watercolor", name: "Watercolor", isPremium: true, softness: 1, opacity: 0.5 },
 	{ id: "airbrush", name: "Airbrush", isPremium: true, softness: 1, opacity: 0.3 },
 ];
+
+const CANVAS_DEFAULT_WIDTH = 1200;
+const CANVAS_DEFAULT_HEIGHT = 800;
 
 export default function DrawingCanvas() {
 	const tempCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,9 +70,13 @@ export default function DrawingCanvas() {
 	const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
 	const [isSaving, setIsSaving] = useState(false);
+	const [isLoading, setIsLoading] = useState(false);
 
 	useEffect(() => {
 		const savedSession = localStorage.getItem("drawing_session_state");
+		setIsLoading(true);
+		setCanvasHeight(CANVAS_DEFAULT_HEIGHT);
+		setCanvasWidth(CANVAS_DEFAULT_WIDTH);
 
 		if (savedSession) {
 			const parsedSession = JSON.parse(savedSession);
@@ -83,8 +90,9 @@ export default function DrawingCanvas() {
 				setActiveLayerId(parsedSession.activeLayerId);
 				setHistory([{ layers: parsedSession.layers }]);
 				setHistoryStep(0);
-				return; // Stop here, we loaded from session
 			}
+			setIsLoading(false);
+			return; // Stop here, we loaded from session
 		}
 
 		// Fallback: If no session, or ID mismatch, use standard loading logic
@@ -149,6 +157,7 @@ export default function DrawingCanvas() {
 			setHistory([{ layers: [initialLayer] }]);
 			setHistoryStep(0);
 		}
+		setIsLoading(false);
 	}, [id, user]);
 
 	// --- 2. NEW: Auto-Save Session Logic ---
@@ -510,30 +519,30 @@ export default function DrawingCanvas() {
 		return tempC.toDataURL();
 	};
 
-	const saveDrawing = async (e: React.FormEvent) => {
-		// Clean up the autosave session since we are performing a manual save
-		// (Optional: you might want to keep it, but usually saving commits the state)
-		e.preventDefault();
-		if (!user || !canvasWidth || !canvasHeight) return; // Or handle local-only mode
+	const saveDrawing = async (e?: React.FormEvent) => {
+		if (e) e.preventDefault();
+		if (!user) return;
+
 		setIsSaving(true);
 		const thumbnail = flattenCanvas();
-		// const drawings = JSON.parse(localStorage.getItem("drawings") || "[]");
 
 		const newDrawingData: Drawing = {
-			drawingId: null,
+			drawingId: id || null,
 			title: drawingTitle,
 			thumbnail: thumbnail,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 			userId: user.id,
-			width: canvasWidth,
-			height: canvasHeight,
+			width: canvasWidth || CANVAS_DEFAULT_WIDTH,
+			height: canvasHeight || CANVAS_DEFAULT_HEIGHT,
 		};
 
 		const res = await drawingsService.saveDrawing(user.id, newDrawingData, layers);
-
-		alert("Drawing saved successfully!");
-		console.log("res: ", res);
+		if (res.error) {
+			alert(res.error);
+		} else {
+			alert("Drawing saved successfully!");
+		}
 
 		setIsSaving(false);
 	};
@@ -558,11 +567,11 @@ export default function DrawingCanvas() {
 
 	// Keyboard Shortcuts
 	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
+		if ((e.key === "z" || e.key === "Z") && (e.metaKey || e.ctrlKey)) {
 			undo();
-		} else if (e.key === "y" && (e.metaKey || e.ctrlKey)) {
+		} else if ((e.key === "y" || e.key === "Y") && (e.metaKey || e.ctrlKey)) {
 			redo();
-		} else if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+		} else if ((e.key === "s" || e.key === "S") && (e.metaKey || e.ctrlKey)) {
 			saveDrawing();
 		}
 	};
@@ -583,6 +592,7 @@ export default function DrawingCanvas() {
 	return (
 		<div className="relative h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
 			{isSaving && <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999"></div>}
+			{isLoading && <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999">Loading...</div>}
 
 			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
@@ -754,6 +764,11 @@ export default function DrawingCanvas() {
 												{brush.isPremium && !user?.premium_expiry && (
 													<Badge variant="secondary">
 														<Lock className="w-3 h-3" />
+													</Badge>
+												)}
+												{brush.isPremium && user?.premium_expiry && (
+													<Badge variant="secondary">
+														<LockOpen className="w-3 h-3" />
 													</Badge>
 												)}
 											</div>

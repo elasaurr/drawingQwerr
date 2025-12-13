@@ -14,8 +14,12 @@ export interface Drawing {
 
 export const drawingsService = {
 	async saveDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
+		console.log("drawingsService.saveDrawing() drawing:", drawing);
+
 		if (drawing.drawingId) {
-			return drawingsApi.updateDrawing(userId, drawing, layers);
+			console.log("updateDrawing() drawingId:", drawing.drawingId);
+
+			return drawingsApi.updateDrawing(userId, drawing.drawingId, drawing.title, drawing.thumbnail, layers);
 		} else {
 			return drawingsApi.createDrawing(userId, drawing, layers);
 		}
@@ -30,6 +34,8 @@ export const drawingsService = {
 	},
 
 	async deleteDrawing(userId: string, drawingId: string) {
+		console.log("drawingsService: delete Drawing:", drawingId, " userId:", userId);
+
 		return drawingsApi.deleteDrawing(drawingId, userId);
 	},
 };
