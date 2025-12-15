@@ -8,7 +8,6 @@ import { Badge } from "./ui/badge";
 import { Palette, Plus, User, LogOut, Trash2, Crown } from "lucide-react";
 import NewCanvasDialog from "./NewCanvasDialog";
 import { useLocation } from "react-router-dom";
-// import { getDrawings, deleteDrawing } from "../api/drawings";
 import { drawingsService } from "../services/drawingsService";
 import Spinner from "./ui/spinner";
 import { Drawing } from "../services/drawingsService";

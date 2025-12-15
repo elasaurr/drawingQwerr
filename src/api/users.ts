@@ -5,7 +5,7 @@ import { API_BASE_URL } from "../constants";
 const API_URL = `${API_BASE_URL}/users`;
 
 // Helper to get auth header
-const getAuthHeader = () => {
+export const getAuthHeader = () => {
 	const token = localStorage.getItem("accessToken");
 	return token ? { Authorization: `Bearer ${token}` } : {};
 };
