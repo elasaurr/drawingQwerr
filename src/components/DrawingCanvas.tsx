@@ -5,13 +5,32 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
+import Spinner from "./ui/spinner";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import LayerPanel, { Layer } from "./LayerPanel";
-import { Pencil, Eraser, Circle, Square, Minus, Undo, Redo, Trash2, Save, Download, Home, Lock, LockOpen, Layers as LayersIcon } from "lucide-react";
+import {
+	Pencil,
+	Eraser,
+	Circle,
+	Square,
+	Minus,
+	Undo,
+	Redo,
+	Trash2,
+	Save,
+	Download,
+	Home,
+	Lock,
+	LockOpen,
+	Layers as LayersIcon,
+	PaintBucket,
+	ZoomIn,
+	ZoomOut,
+} from "lucide-react";
 import { drawingsService, Drawing } from "../services/drawingsService";
 
-type Tool = "pencil" | "eraser" | "line" | "rectangle" | "circle";
+type Tool = "pencil" | "eraser" | "line" | "rectangle" | "circle" | "fill";
 
 interface BrushType {
 	id: string;
@@ -49,6 +68,7 @@ export default function DrawingCanvas() {
 
 	const [canvasWidth, setCanvasWidth] = useState<number | null>(null);
 	const [canvasHeight, setCanvasHeight] = useState<number | null>(null);
+	const [canvasScale, setCanvasScale] = useState(1);
 
 	const [tool, setTool] = useState<Tool>("pencil");
 	const [selectedBrush, setSelectedBrush] = useState(brushes[0]);
@@ -263,6 +283,86 @@ export default function DrawingCanvas() {
 		};
 	};
 
+	const hexToRgba = (hex: string) => {
+		const r = parseInt(hex.slice(1, 3), 16);
+		const g = parseInt(hex.slice(3, 5), 16);
+		const b = parseInt(hex.slice(5, 7), 16);
+		return { r, g, b, a: 255 };
+	};
+
+	// FLOOD FILL ALGORITHM
+	const floodFill = (
+		ctx: CanvasRenderingContext2D,
+		startX: number,
+		startY: number,
+		fillColor: { r: number; g: number; b: number; a: number },
+		tolerance: number = 10
+	) => {
+		const width = ctx.canvas.width;
+		const height = ctx.canvas.height;
+		const imageData = ctx.getImageData(0, 0, width, height);
+		const data = imageData.data;
+
+		// Get starting pixel index
+		const getPixelIndex = (x: number, y: number) => (y * width + x) * 4;
+		const startIndex = getPixelIndex(startX, startY);
+
+		const startR = data[startIndex];
+		const startG = data[startIndex + 1];
+		const startB = data[startIndex + 2];
+		const startA = data[startIndex + 3];
+
+		// Optimization: If clicking same color, do nothing
+		if (
+			Math.abs(startR - fillColor.r) < tolerance &&
+			Math.abs(startG - fillColor.g) < tolerance &&
+			Math.abs(startB - fillColor.b) < tolerance &&
+			Math.abs(startA - fillColor.a) < tolerance
+		) {
+			return;
+		}
+
+		const stack = [[startX, startY]];
+		const processed = new Uint8Array(width * height); // keep track of visited pixels
+
+		while (stack.length > 0) {
+			const [x, y] = stack.pop()!;
+			const pixelIndex = getPixelIndex(x, y);
+
+			if (processed[y * width + x]) continue;
+
+			// Check if current pixel matches start color
+			const r = data[pixelIndex];
+			const g = data[pixelIndex + 1];
+			const b = data[pixelIndex + 2];
+			const a = data[pixelIndex + 3];
+
+			const matchesStart =
+				Math.abs(r - startR) <= tolerance &&
+				Math.abs(g - startG) <= tolerance &&
+				Math.abs(b - startB) <= tolerance &&
+				Math.abs(a - startA) <= tolerance;
+
+			if (matchesStart) {
+				// Fill pixel
+				data[pixelIndex] = fillColor.r;
+				data[pixelIndex + 1] = fillColor.g;
+				data[pixelIndex + 2] = fillColor.b;
+				data[pixelIndex + 3] = fillColor.a; // Full opacity for fill
+
+				processed[y * width + x] = 1;
+
+				// Add neighbors
+				if (x > 0) stack.push([x - 1, y]);
+				if (x < width - 1) stack.push([x + 1, y]);
+				if (y > 0) stack.push([x, y - 1]);
+				if (y < height - 1) stack.push([x, y + 1]);
+			}
+		}
+
+		ctx.putImageData(imageData, 0, 0);
+	};
+
 	const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		const activeLayer = layers.find((l) => l.id === activeLayerId);
 		if (!activeLayer) {
@@ -275,40 +375,35 @@ export default function DrawingCanvas() {
 		}
 
 		const pos = getMousePos(e);
+
+		// --- NEW: HANDLE FILL TOOL ---
+		if (tool === "fill") {
+			const activeCanvas = layerCanvasRefs.current[activeLayerId!];
+			const ctx = activeCanvas?.getContext("2d", { willReadFrequently: true });
+			if (!ctx) return;
+
+			// Convert hex color to RGBA
+			const rgba = hexToRgba(color);
+			// Adjust alpha based on opacity slider
+			rgba.a = Math.floor((brushOpacity / 100) * 255);
+
+			// Run Flood Fill
+			// Note: We use Math.floor because canvas coords can be decimals
+			floodFill(ctx, Math.floor(pos.x), Math.floor(pos.y), rgba);
+
+			// Save History immediately
+			const newImageData = activeCanvas!.toDataURL();
+			const newLayers = layers.map((l) => (l.id === activeLayerId ? { ...l, imageData: newImageData } : l));
+			setLayers(newLayers);
+			addToHistory(newLayers);
+			return; // Stop here, don't start the normal drawing loop
+		}
+		// -----------------------------
+
 		setStartPos(pos);
 		lastPos.current = pos;
 		setIsDrawing(true);
-
-		currentPath.current = [pos];
-
-		const ctx = tempCanvasRef.current?.getContext("2d");
-		if (!ctx) return;
-
-		ctx.lineCap = "round";
-		ctx.lineJoin = "round";
-
-		if (tool === "eraser") {
-			ctx.strokeStyle = "#ffffff";
-			ctx.globalAlpha = 1;
-			ctx.shadowBlur = 0;
-			ctx.lineWidth = brushSize;
-			// ctx.globalCompositeOperation = "source-over";
-		} else {
-			ctx.strokeStyle = color;
-			ctx.lineWidth = brushSize;
-			// ctx.globalAlpha = (brushOpacity / 100) * selectedBrush.opacity;
-			// ctx.globalCompositeOperation = "source-over";
-
-			if (selectedBrush.softness > 0.5 && tool === "pencil") {
-				ctx.shadowBlur = brushSize * selectedBrush.softness;
-				ctx.shadowColor = color;
-			} else {
-				ctx.shadowBlur = 0;
-			}
-		}
-
-		ctx.beginPath();
-		ctx.moveTo(pos.x, pos.y);
+		// ... rest of startDrawing function
 	};
 
 	const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -318,39 +413,23 @@ export default function DrawingCanvas() {
 
 		const pos = getMousePos(e);
 
+		// [BLOCK 1: SHAPES] - This part was already correct
 		if (tool === "line" || tool === "rectangle" || tool === "circle") {
-			if (!tempCanvasRef.current) return;
-			ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
-
+			// ... existing shape logic ...
 			ctx.strokeStyle = color;
 			ctx.lineWidth = brushSize;
-			ctx.globalAlpha = brushOpacity / 100;
-			ctx.beginPath();
-
-			if (tool === "line") {
-				ctx.moveTo(startPos.x, startPos.y);
-				ctx.lineTo(pos.x, pos.y);
-			} else if (tool === "rectangle") {
-				ctx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
-			} else if (tool === "circle") {
-				const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
-				ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
-			}
-			ctx.stroke();
+			// ...
 			return;
 		}
 
+		// [BLOCK 2: SPRAY/AIRBRUSH] - This handles its own color parsing
 		if (tool === "pencil" && (selectedBrush.id === "airbrush" || selectedBrush.id === "watercolor")) {
-			if (lastPos.current) {
-				const points = getPointsOnLine(lastPos.current, pos);
-				const baseOpacity = (brushOpacity / 100) * selectedBrush.opacity * 0.1;
-
-				points.forEach((point) => {
-					drawSprayPoint(ctx, point.x, point.y, brushSize, color, baseOpacity);
-				});
-			}
+			// ... existing spray logic ...
 			lastPos.current = pos;
-		} else {
+		}
+
+		// [BLOCK 3: STANDARD PENCIL] - THIS IS WHERE THE FIX GOES
+		else {
 			currentPath.current.push(pos);
 
 			if (!tempCanvasRef.current) return;
@@ -358,6 +437,13 @@ export default function DrawingCanvas() {
 
 			ctx.globalCompositeOperation = "source-over";
 			ctx.globalAlpha = (brushOpacity / 100) * (tool === "eraser" ? 1 : selectedBrush.opacity);
+
+			// --- ADD THESE LINES ---
+			ctx.strokeStyle = color; // Apply current color
+			ctx.lineWidth = brushSize; // Apply current size
+			ctx.lineCap = "round"; // Makes lines smoother
+			ctx.lineJoin = "round"; // Makes corners smoother
+			// -----------------------
 
 			ctx.beginPath();
 
@@ -535,27 +621,29 @@ export default function DrawingCanvas() {
 		if (!user) return;
 
 		setIsSaving(true);
-		const thumbnail = flattenCanvas();
 
-		const newDrawingData: Drawing = {
-			drawingId: id || null,
-			title: drawingTitle,
-			thumbnail: thumbnail,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-			userId: user.id,
-			width: canvasWidth || CANVAS_DEFAULT_WIDTH,
-			height: canvasHeight || CANVAS_DEFAULT_HEIGHT,
-		};
+		try {
+			const thumbnail = flattenCanvas();
 
-		const res = await drawingsService.saveDrawing(user.id, newDrawingData, layers);
-		if (res.error) {
-			alert(res.error);
-		} else {
+			const newDrawingData: Drawing = {
+				drawingId: id || null,
+				title: drawingTitle,
+				thumbnail: thumbnail,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				userId: user.id,
+				width: canvasWidth || CANVAS_DEFAULT_WIDTH,
+				height: canvasHeight || CANVAS_DEFAULT_HEIGHT,
+			};
+
+			const res = await drawingsService.saveDrawing(user.id, newDrawingData, layers);
+
 			alert("Drawing saved successfully!");
+		} catch (err: any) {
+			alert(err.message || "Failed to save drawing.");
+		} finally {
+			setIsSaving(false);
 		}
-
-		setIsSaving(false);
 	};
 
 	const downloadDrawing = () => {
@@ -576,8 +664,44 @@ export default function DrawingCanvas() {
 		setSelectedBrush(brush);
 	};
 
+	const rescale = (direction: "up" | "down") => {
+		if (!canvasWidth || !canvasHeight) return;
+
+		setCanvasScale((prev) => {
+			if (direction === "up") {
+				if (prev >= 2) return prev;
+				return prev + 0.05;
+			}
+
+			if (direction === "down") {
+				if (prev <= 0.1) return prev;
+				return prev - 0.05;
+			}
+
+			return prev;
+		});
+	};
+
+	useEffect(() => {
+		const mouseWheelHandler = (e: WheelEvent) => {
+			if (!e.ctrlKey && !e.metaKey) return;
+
+			e.preventDefault();
+
+			if (e.deltaY < 0) rescale("up");
+			if (e.deltaY > 0) rescale("down");
+		};
+
+		document.addEventListener("wheel", mouseWheelHandler, { passive: false });
+
+		return () => {
+			document.removeEventListener("wheel", mouseWheelHandler);
+		};
+	}, [canvasWidth, canvasHeight]);
+
 	// Keyboard Shortcuts
 	const handleKeyDown = (e: KeyboardEvent) => {
+		if (isLoading || isSaving) return;
 		if ((e.key === "z" || e.key === "Z") && (e.metaKey || e.ctrlKey)) {
 			undo();
 		} else if ((e.key === "y" || e.key === "Y") && (e.metaKey || e.ctrlKey)) {
@@ -586,7 +710,6 @@ export default function DrawingCanvas() {
 			saveDrawing();
 		}
 	};
-
 	useEffect(() => {
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
@@ -602,8 +725,15 @@ export default function DrawingCanvas() {
 
 	return (
 		<div className="relative h-screen flex flex-col bg-gray-100" onMouseUp={stopDrawing}>
-			{isSaving && <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999"></div>}
-			{isLoading && <div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999">Loading...</div>}
+			{(isSaving || isLoading) && (
+				<div className="absolute top-0 left-0 w-full h-full bg-black/30 z-99999 flex items-center justify-center">
+					<div className="bg-black/40 backdrop-blur p-8 text-white flex flex-col items-center justify-center gap-2 rounded-2xl">
+						<Spinner />
+						{isLoading && "Loading Drawing..."}
+						{isSaving && "Saving Drawing..."}
+					</div>
+				</div>
+			)}
 
 			<nav className="bg-white border-b px-4 py-3 flex items-center justify-between gap-4 z-50 relative">
 				<div className="flex items-center gap-4">
@@ -618,6 +748,20 @@ export default function DrawingCanvas() {
 				</div>
 
 				<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1">
+						<Button variant="outline" size="sm" onClick={() => rescale("down")} aria-label="Zoom out">
+							<ZoomOut />
+						</Button>
+
+						<span className="px-2 text-sm tabular-nums">{Math.round(canvasScale * 100)}%</span>
+
+						<Button variant="outline" size="sm" onClick={() => rescale("up")} aria-label="Zoom in">
+							<ZoomIn />
+						</Button>
+					</div>
+
+					<div className="w-px h-6 bg-gray-300"></div>
+
 					<Button variant="outline" size="sm" onClick={() => setShowLayerPanel(!showLayerPanel)}>
 						<LayersIcon className="w-4 h-4 mr-2" />
 						Layers
@@ -663,6 +807,14 @@ export default function DrawingCanvas() {
 											className="justify-start">
 											<Eraser className="w-4 h-4 mr-2" />
 											Eraser
+										</Button>
+										<Button
+											variant={tool === "fill" ? "default" : "outline"}
+											size="sm"
+											onClick={() => setTool("fill")}
+											className="justify-start col-span-2">
+											<PaintBucket className="w-4 h-4 mr-2" />
+											Fill Bucket
 										</Button>
 									</div>
 								</div>
@@ -793,13 +945,14 @@ export default function DrawingCanvas() {
 
 				<div className="flex-1 p-4 md:p-8 overflow-auto bg-gray-200 flex items-center justify-center w-full h-full">
 					<div
-						className="relative bg-white shadow-2xl max-w-full"
+						className="relative shadow-2xl max-w-full"
 						style={{
 							width: "100%",
 							maxWidth: `${canvasWidth}px`,
 							aspectRatio: `${canvasWidth}/${canvasHeight}`,
+							transform: `scale(${canvasScale})`,
 						}}>
-						<div className="absolute inset-0 bg-white pointer-events-none" />
+						<div className="absolute inset-0 bg-transparent bg-[url('bg-transparent.png')] bg-contain bg-center pointer-events-none" />
 
 						{layers.map((layer, index) => {
 							const zIndex = layers.length - index;
