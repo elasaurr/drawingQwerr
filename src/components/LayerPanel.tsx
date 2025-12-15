@@ -155,7 +155,7 @@ export default function LayerPanel({ layers, activeLayerId, onLayersChange, onAc
 										/>
 									) : (
 										<div className="text-sm truncate" onDoubleClick={() => setEditingLayerId(layer.id)}>
-											{layer.name} | index: {layer.index}
+											{layer.name}
 										</div>
 									)}
 

@@ -20,10 +20,8 @@ const authMiddleware = async (req, res, next) => {
 	const token = authHeader.split(" ")[1];
 
 	try {
-		// Create authenticated client for this request
 		const authenticatedSupabase = createAuthenticatedClient(token);
 
-		// Verify the token and get user
 		const {
 			data: { user },
 			error,
@@ -33,7 +31,6 @@ const authMiddleware = async (req, res, next) => {
 			return res.status(401).json({ error: "Invalid or expired token" });
 		}
 
-		// Attach to request
 		req.user = user;
 		req.supabase = authenticatedSupabase;
 		next();

@@ -1,38 +1,29 @@
 const express = require("express");
 const router = express.Router();
-// 1. Remove the global supabase client import
-// const supabase = require("../supabaseClient");
 const crypto = require("crypto");
-// 2. Import your existing middleware
 const { authMiddleware } = require("../middleware/authMiddleware");
 
-// Utility to convert base64 dataURL to Buffer
 function dataURLToBuffer(dataURL) {
 	if (!dataURL) return Buffer.from("");
 	const parts = dataURL.split(",");
 	const base64 = parts.length > 1 ? parts[1] : parts[0];
 	return Buffer.from(base64, "base64");
 }
+function isPng(buffer) {
+	if (!buffer || buffer.length < 8) return false;
+	return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+}
 
-// ------------------------------------------------------------------
-// APPLY MIDDLEWARE GLOBALLY TO ALL DRAWING ROUTES
-// ------------------------------------------------------------------
-// This ensures every request has req.supabase (authenticated) and req.user
 router.use(authMiddleware);
 
-// ------------------------------------------------------------------
-// 1. GET ALL DRAWINGS FOR USER
-// ------------------------------------------------------------------
 router.get("/:userId", async (req, res) => {
 	try {
 		const { userId } = req.params;
 
-		// Security Check: Ensure logged-in user matches requested userId
 		if (req.user.id !== userId) {
 			return res.status(403).json({ error: "Unauthorized access to these drawings" });
 		}
 
-		// 3. Use req.supabase instead of global supabase
 		const { data, error } = await req.supabase.from("drawings").select("*").eq("user_id", userId).order("updated_at", { ascending: false });
 
 		if (error) throw error;
@@ -44,9 +35,6 @@ router.get("/:userId", async (req, res) => {
 	}
 });
 
-// ------------------------------------------------------------------
-// 2. GET SINGLE DRAWING + LAYERS
-// ------------------------------------------------------------------
 router.get("/:userId/:drawingId", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
@@ -55,7 +43,6 @@ router.get("/:userId/:drawingId", async (req, res) => {
 
 		const responseData = {};
 
-		// Use req.supabase
 		const { data: drawingData, error: drawingError } = await req.supabase
 			.from("drawings")
 			.select("*")
@@ -81,9 +68,6 @@ router.get("/:userId/:drawingId", async (req, res) => {
 	}
 });
 
-// ------------------------------------------------------------------
-// 3. GET SIGNED URL
-// ------------------------------------------------------------------
 router.get("/:userId/:drawingId/url", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
@@ -101,28 +85,20 @@ router.get("/:userId/:drawingId/url", async (req, res) => {
 	}
 });
 
-// ------------------------------------------------------------------
-// 4. CREATE DRAWING
-// ------------------------------------------------------------------
 router.post("/", async (req, res) => {
 	try {
-		// We can rely on req.user.id instead of trusting the body's userId for security
 		const userId = req.user.id;
 		const { title, thumbnail, width, height, createdAt, layers } = req.body;
 
 		const drawingUUID = crypto.randomUUID();
 		const filePath = `${userId}/${encodeURIComponent(drawingUUID)}.png`;
 
-		console.log("------------------------------------------------");
-		console.log("DEBUG UPLOAD:");
-		console.log("Logged in User ID:", userId);
-		console.log("Target File Path:", filePath);
-		console.log("------------------------------------------------");
-
 		const buffer = dataURLToBuffer(thumbnail);
+		if (!isPng(buffer)) {
+			return res.status(400).json({ error: "Invalid file format. Only PNG is allowed." });
+		}
 		const responsePayload = {};
 
-		// Use req.supabase
 		const { data: storageData, error: storageError } = await req.supabase.storage
 			.from("drawings")
 			.upload(filePath, buffer, { contentType: "image/png", upsert: true });
@@ -175,13 +151,10 @@ router.post("/", async (req, res) => {
 	}
 });
 
-// ------------------------------------------------------------------
-// 5. UPDATE DRAWING
-// ------------------------------------------------------------------
 router.put("/:drawingId", async (req, res) => {
 	try {
 		const { drawingId } = req.params;
-		const userId = req.user.id; // Get from token
+		const userId = req.user.id;
 		const { title, thumbnail, layers } = req.body;
 		const responsePayload = {};
 
@@ -189,7 +162,10 @@ router.put("/:drawingId", async (req, res) => {
 
 		if (thumbnail) {
 			const buffer = dataURLToBuffer(thumbnail);
-			// Use req.supabase
+			if (!isPng(buffer)) {
+				return res.status(400).json({ error: "Invalid file format. Only PNG is allowed." });
+			}
+
 			const { data: storageData, error: storageError } = await req.supabase.storage
 				.from("drawings")
 				.update(filePath, buffer, { contentType: "image/png", upsert: true });
@@ -207,13 +183,17 @@ router.put("/:drawingId", async (req, res) => {
 				updated_at: new Date().toISOString(),
 			})
 			.eq("id", drawingId)
+			.eq("user_id", userId)
 			.select();
 
 		if (dbError) throw dbError;
 		responsePayload.drawingData = drawingData;
 
 		if (Array.isArray(layers) && layers.length > 0) {
-			// req.supabase checks RLS automatically (must own the drawing to delete layers)
+			if (layers.length > 100) {
+				return res.status(400).json({ error: "Max 100 layers allowed" });
+			}
+
 			const { error: deleteLayersError } = await req.supabase.from("layers").delete().eq("drawing_id", drawingId);
 
 			if (deleteLayersError) throw deleteLayersError;
@@ -243,15 +223,11 @@ router.put("/:drawingId", async (req, res) => {
 	}
 });
 
-// ------------------------------------------------------------------
-// 6. DELETE DRAWING
-// ------------------------------------------------------------------
 router.delete("/:userId/:drawingId", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
 		if (req.user.id !== userId) return res.status(403).json({ error: "Forbidden" });
 
-		// Use req.supabase
 		const { error: layersError } = await req.supabase.from("layers").delete().eq("drawing_id", drawingId);
 
 		if (layersError) throw layersError;

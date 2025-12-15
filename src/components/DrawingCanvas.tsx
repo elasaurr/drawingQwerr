@@ -73,10 +73,14 @@ export default function DrawingCanvas() {
 	const [isLoading, setIsLoading] = useState(false);
 
 	useEffect(() => {
-		const savedSession = localStorage.getItem("drawing_session_state");
+		// 1. START LOADING
 		setIsLoading(true);
+
+		// Set defaults immediately to avoid layout shift
 		setCanvasHeight(CANVAS_DEFAULT_HEIGHT);
 		setCanvasWidth(CANVAS_DEFAULT_WIDTH);
+
+		const savedSession = localStorage.getItem("drawing_session_state");
 
 		if (savedSession) {
 			const parsedSession = JSON.parse(savedSession);
@@ -90,9 +94,11 @@ export default function DrawingCanvas() {
 				setActiveLayerId(parsedSession.activeLayerId);
 				setHistory([{ layers: parsedSession.layers }]);
 				setHistoryStep(0);
+
+				// STOP LOADING (Session found)
+				setIsLoading(false);
+				return;
 			}
-			setIsLoading(false);
-			return; // Stop here, we loaded from session
 		}
 
 		// Fallback: If no session, or ID mismatch, use standard loading logic
@@ -109,19 +115,17 @@ export default function DrawingCanvas() {
 						setCanvasHeight(drawingsData.height);
 
 						if (rawLayers && rawLayers.length > 0) {
-							// 1. MAP DB KEYS TO FRONTEND KEYS
 							const formattedLayers: Layer[] = rawLayers.map((l: any) => ({
-								id: l.layer_id,
+								id: l.id || l.layer_id, // Handle both key types just in case
 								name: l.name,
 								visible: l.visible,
 								opacity: l.opacity,
 								blendMode: l.blend_mode || l.blendMode || "normal",
 								locked: l.locked,
-								imageData: l.image_data || null,
+								imageData: l.image_data || l.imageData || null,
 								index: l.index,
 							}));
 
-							// 2. SORT LAYERS BY INDEX (DB doesn't guarantee order)
 							formattedLayers.sort((a, b) => a.index - b.index);
 							setLayers(formattedLayers);
 							setActiveLayerId(formattedLayers[0].id);
@@ -131,6 +135,9 @@ export default function DrawingCanvas() {
 					}
 				} catch (err) {
 					console.error("Failed to load drawing:", err);
+				} finally {
+					// 2. STOP LOADING (Only after fetch is completely done)
+					setIsLoading(false);
 				}
 			};
 
@@ -156,8 +163,12 @@ export default function DrawingCanvas() {
 			setActiveLayerId(initialId);
 			setHistory([{ layers: [initialLayer] }]);
 			setHistoryStep(0);
+
+			// STOP LOADING (New drawing ready)
+			setIsLoading(false);
 		}
-		setIsLoading(false);
+
+		// REMOVE THE `setIsLoading(false)` THAT WAS HERE PREVIOUSLY
 	}, [id, user]);
 
 	// --- 2. NEW: Auto-Save Session Logic ---
@@ -197,12 +208,12 @@ export default function DrawingCanvas() {
 				};
 				img.src = layer.imageData;
 			} else {
-				// We don't clearRect here if it's empty, because it might be a fresh layer
-				// that we want to keep drawing on without flashing
-				// Only clear if explicitly necessary or handle via state
+				// FIX: Explicitly clear the canvas if imageData is null
+				// This ensures reused or new canvases start empty
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
 			}
 		});
-	}, [layers]); // Be careful: simple dependency on 'layers' might trigger re-paints often
+	}, [layers]);
 
 	// Helper: Interpolate points between two coordinates to prevent gaps
 	const getPointsOnLine = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
@@ -794,7 +805,7 @@ export default function DrawingCanvas() {
 							const zIndex = layers.length - index;
 							return (
 								<canvas
-									key={`index:${layer.index}`}
+									key={layer.id}
 									ref={(el) => (layerCanvasRefs.current[layer.id] = el)}
 									width={canvasWidth}
 									height={canvasHeight}

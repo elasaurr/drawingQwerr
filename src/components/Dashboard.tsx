@@ -33,8 +33,6 @@ export default function Dashboard() {
 			}
 
 			const userDrawings = await drawingsService.getDrawings(user.id);
-			// console.log("loadDrawings() user.id:", user.id);
-			// console.log("loadDrawings() userDrawings:", userDrawings);
 
 			setDrawings(userDrawings);
 		} catch (error) {
