@@ -24,12 +24,11 @@ app.use(
 	})
 );
 
-app.use(express.json({ limit: "500kb" }));
-app.use(express.urlencoded({ limit: "5mb", extended: true }));
-const drawingUploadLimiter = express.json({ limit: "5mb" });
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-app.use("/users", usersRouter);
-app.use("/drawings", drawingUploadLimiter, drawingsRouter);
+app.use("/users", express.json({ limit: "1mb" }), usersRouter);
+app.use("/drawings", express.json({ limit: "50mb" }), drawingsRouter);
 
 // Test route
 app.get("/", (req, res) => {
