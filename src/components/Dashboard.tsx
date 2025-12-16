@@ -11,6 +11,7 @@ import { useLocation } from "react-router-dom";
 import { drawingsService } from "../services/drawingsService";
 import Spinner from "./ui/spinner";
 import { Drawing } from "../services/drawingsService";
+import { APP_NAME } from "../constants";
 
 export default function Dashboard() {
 	const { user, logout } = useAuth();
@@ -75,7 +76,7 @@ export default function Dashboard() {
 				<div className="container mx-auto px-6 py-4 flex justify-between items-center">
 					<div className="flex items-center gap-2">
 						<Palette className="w-6 h-6 text-purple-600" />
-						<span className="text-xl">qwer</span>
+						<span className="text-xl">{APP_NAME}</span>
 						{user?.premium_expiry !== null && (
 							<Badge className="bg-linear-to-r from-yellow-400 to-orange-400 text-white">
 								<Crown className="w-3 h-3 mr-1" />
