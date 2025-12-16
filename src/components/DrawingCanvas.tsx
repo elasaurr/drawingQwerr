@@ -93,7 +93,6 @@ export default function DrawingCanvas() {
 	const [isLoading, setIsLoading] = useState(false);
 
 	useEffect(() => {
-		// 1. START LOADING
 		setIsLoading(true);
 
 		// Set defaults immediately to avoid layout shift
@@ -114,8 +113,6 @@ export default function DrawingCanvas() {
 				setActiveLayerId(parsedSession.activeLayerId);
 				setHistory([{ layers: parsedSession.layers }]);
 				setHistoryStep(0);
-
-				// STOP LOADING (Session found)
 				setIsLoading(false);
 				return;
 			}
@@ -136,7 +133,7 @@ export default function DrawingCanvas() {
 
 						if (rawLayers && rawLayers.length > 0) {
 							const formattedLayers: Layer[] = rawLayers.map((l: any) => ({
-								id: l.id || l.layer_id, // Handle both key types just in case
+								id: l.id || l.layer_id,
 								name: l.name,
 								visible: l.visible,
 								opacity: l.opacity,
@@ -156,7 +153,6 @@ export default function DrawingCanvas() {
 				} catch (err) {
 					console.error("Failed to load drawing:", err);
 				} finally {
-					// 2. STOP LOADING (Only after fetch is completely done)
 					setIsLoading(false);
 				}
 			};
@@ -183,21 +179,15 @@ export default function DrawingCanvas() {
 			setActiveLayerId(initialId);
 			setHistory([{ layers: [initialLayer] }]);
 			setHistoryStep(0);
-
-			// STOP LOADING (New drawing ready)
 			setIsLoading(false);
 		}
-
-		// REMOVE THE `setIsLoading(false)` THAT WAS HERE PREVIOUSLY
 	}, [id, user]);
 
-	// --- 2. NEW: Auto-Save Session Logic ---
 	useEffect(() => {
-		// Don't save empty states
 		if (layers.length === 0 || !canvasWidth || !canvasHeight) return;
 
 		const sessionState = {
-			drawingId: id || null, // Track which ID this session belongs to
+			drawingId: id || null,
 			layers: layers,
 			width: canvasWidth,
 			height: canvasHeight,
@@ -205,8 +195,6 @@ export default function DrawingCanvas() {
 			activeLayerId: activeLayerId,
 		};
 
-		// Debounce could be added here for performance if layers get very heavy,
-		// but for now, we save on every layer/title change.
 		localStorage.setItem("drawing_session_state", JSON.stringify(sessionState));
 	}, [layers, canvasWidth, canvasHeight, drawingTitle, activeLayerId, id]);
 
@@ -219,7 +207,6 @@ export default function DrawingCanvas() {
 			const ctx = canvas.getContext("2d");
 			if (!ctx) return;
 
-			// If we have imageData (from history or load), paint it
 			if (layer.imageData) {
 				const img = new Image();
 				img.onload = () => {
@@ -228,19 +215,15 @@ export default function DrawingCanvas() {
 				};
 				img.src = layer.imageData;
 			} else {
-				// FIX: Explicitly clear the canvas if imageData is null
-				// This ensures reused or new canvases start empty
 				ctx.clearRect(0, 0, canvas.width, canvas.height);
 			}
 		});
 	}, [layers]);
 
-	// Helper: Interpolate points between two coordinates to prevent gaps
 	const getPointsOnLine = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
 		const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 		const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
 		const points = [];
-		// Step size: smaller = denser line, larger = faster performance
 		const step = 2;
 
 		for (let i = 0; i < distance; i += step) {
@@ -413,18 +396,38 @@ export default function DrawingCanvas() {
 
 		const pos = getMousePos(e);
 
-		// [BLOCK 1: SHAPES] - This part was already correct
 		if (tool === "line" || tool === "rectangle" || tool === "circle") {
-			// ... existing shape logic ...
+			if (!tempCanvasRef.current) return;
+			ctx.clearRect(0, 0, tempCanvasRef.current.width, tempCanvasRef.current.height);
+
 			ctx.strokeStyle = color;
 			ctx.lineWidth = brushSize;
-			// ...
+			ctx.globalAlpha = brushOpacity / 100;
+			ctx.beginPath();
+
+			if (tool === "line") {
+				ctx.moveTo(startPos.x, startPos.y);
+				ctx.lineTo(pos.x, pos.y);
+			} else if (tool === "rectangle") {
+				ctx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
+			} else if (tool === "circle") {
+				const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
+				ctx.arc(startPos.x, startPos.y, radius, 0, 2 * Math.PI);
+			}
+			ctx.stroke();
 			return;
 		}
 
 		// [BLOCK 2: SPRAY/AIRBRUSH] - This handles its own color parsing
 		if (tool === "pencil" && (selectedBrush.id === "airbrush" || selectedBrush.id === "watercolor")) {
-			// ... existing spray logic ...
+			if (lastPos.current) {
+				const points = getPointsOnLine(lastPos.current, pos);
+				const baseOpacity = (brushOpacity / 100) * selectedBrush.opacity * 0.1;
+
+				points.forEach((point) => {
+					drawSprayPoint(ctx, point.x, point.y, brushSize, color, baseOpacity);
+				});
+			}
 			lastPos.current = pos;
 		}
 
