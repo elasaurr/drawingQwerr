@@ -60,6 +60,7 @@
 	},
 	"scripts": {
 		"dev": "cls && vite",
-		"build": "vite build"
+		"build": "vite build",
+		"i": "npm i && cd backend && npm i"
 	}
 }

@@ -60,7 +60,8 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 			}
 			return;
 		}
-
+		localStorage.removeItem("newCanvasSettings");
+		localStorage.removeItem("drawing_session_state");
 		localStorage.setItem("newCanvasSettings", JSON.stringify({ width: customWidth, height: customHeight }));
 		onOpenChange(false);
 		navigate("/draw");
@@ -151,13 +152,13 @@ export default function NewCanvasDialog({ open, onOpenChange }: NewCanvasDialogP
 										<div>
 											<div className="flex items-center gap-2">
 												<span>{preset.name}</span>
-												{preset.isPremium && (
-													<Badge
-														variant="secondary"
-														className="bg-linear-to-r from-yellow-400 to-orange-400 text-white text-xs">
+												<Badge
+													variant="secondary"
+													className="bg-linear-to-r from-yellow-400 to-orange-400 text-white text-xs">
+													<span className="inline-flex items-center">
 														{user?.premium_expiry ? <Crown className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-													</Badge>
-												)}
+													</span>
+												</Badge>
 											</div>
 											<p className="text-sm text-gray-500">
 												{preset.width} x {preset.height}

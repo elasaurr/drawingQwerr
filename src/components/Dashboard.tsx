@@ -65,6 +65,12 @@ export default function Dashboard() {
 		}
 	};
 
+	const handleNewCanvas = () => {
+		localStorage.removeItem("newCanvasSettings");
+		localStorage.removeItem("drawing_session_state");
+		navigate("/draw");
+	};
+
 	return (
 		<div className="min-h-screen bg-linear-to-br from-purple-50 via-white to-blue-50">
 			{isDeleting && (
@@ -147,12 +153,12 @@ export default function Dashboard() {
 							</div>
 							<h3 className="text-xl mb-2">No drawings yet</h3>
 							<p className="text-gray-600 mb-6">Start creating your first masterpiece!</p>
-							<Link to="/draw" className={isDeleting ? "pointer-events-none" : ""}>
-								<Button disabled={isDeleting}>
-									<Plus className="w-4 h-4 mr-2" />
-									Create Drawing
-								</Button>
-							</Link>
+							{/* <Link to="/draw" className={isDeleting ? "pointer-events-none" : ""}> */}
+							<Button disabled={isDeleting} onClick={handleNewCanvas}>
+								<Plus className="w-4 h-4 mr-2" />
+								Create Drawing
+							</Button>
+							{/* </Link> */}
 						</CardContent>
 					</Card>
 				) : (

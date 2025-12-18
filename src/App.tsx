@@ -26,6 +26,7 @@ export default function App() {
 		<AuthProvider>
 			<Router>
 				<Routes>
+					<Route path="/loading" element={<LoadingPage />} />
 					<Route path="/" element={<LandingPage />} />
 					<Route path="/*" element={<LandingPage />} />
 					<Route
