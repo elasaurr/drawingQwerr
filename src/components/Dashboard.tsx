@@ -29,7 +29,7 @@ export default function Dashboard() {
 		try {
 			if (!user) return;
 			if (!user?.id) {
-				console.log("User ID not available yet, skipping loadDrawings.");
+				// console.log("User ID not available yet, skipping loadDrawings.");
 				return;
 			}
 
@@ -37,7 +37,8 @@ export default function Dashboard() {
 
 			setDrawings(userDrawings);
 		} catch (error) {
-			console.log(`Dashboard error: loadDrawings(): ${JSON.stringify(error)}`);
+			// console.log(`Dashboard error: loadDrawings(): ${JSON.stringify(error)}`);
+			alert(error);
 		}
 	};
 

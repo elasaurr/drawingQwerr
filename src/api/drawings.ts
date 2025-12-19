@@ -45,7 +45,7 @@ export async function getDrawingImgUrl(userId: string, drawingId: string) {
 }
 
 export async function createDrawing(userId: string, drawing: Drawing, layers: Layer[]) {
-	console.log("drawings.ts: Create Drawing:", drawing);
+	// console.log("drawings.ts: Create Drawing:", drawing);
 
 	try {
 		const res = await axios.post(
@@ -64,7 +64,7 @@ export async function createDrawing(userId: string, drawing: Drawing, layers: La
 				headers: getAuthHeader(),
 			}
 		);
-		console.log("Create Drawing Response:", res.data);
+		// console.log("Create Drawing Response:", res.data);
 		return res.data;
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || err.message);
@@ -72,7 +72,7 @@ export async function createDrawing(userId: string, drawing: Drawing, layers: La
 }
 
 export async function updateDrawing(userId: string, drawingId: string, title: string, thumbnail: string, layers: Layer[]) {
-	console.log("drawings.ts: Update Drawing:", drawingId);
+	// console.log("drawings.ts: Update Drawing:", drawingId);
 
 	try {
 		if (!drawingId) return;
@@ -101,7 +101,7 @@ export async function deleteDrawing(drawingId: string, userId: string) {
 			withCredentials: true,
 			headers: getAuthHeader(),
 		});
-		console.log("drawings.ts Delete Drawing Response:", res.data);
+		// console.log("drawings.ts Delete Drawing Response:", res.data);
 
 		return res.data;
 	} catch (err: any) {

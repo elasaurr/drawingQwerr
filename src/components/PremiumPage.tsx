@@ -28,7 +28,7 @@ export default function PremiumPage() {
 					minute: "2-digit",
 				})
 			);
-			console.log("PremiumPage useEffect() user.premium_expiry:", expiry);
+			// console.log("PremiumPage useEffect() user.premium_expiry:", expiry);
 		}
 	});
 
@@ -36,7 +36,7 @@ export default function PremiumPage() {
 		if (!user) return;
 		setLoading(true);
 		try {
-			console.log("PremiumPage.handleUpgrade() user.id:", user.id, "plan:", plan);
+			// console.log("PremiumPage.handleUpgrade() user.id:", user.id, "plan:", plan);
 
 			await getPremium(plan);
 			alert(`Successfully upgraded to Premium (${plan})! 🎉\nExpires at: ${expiry}`);
