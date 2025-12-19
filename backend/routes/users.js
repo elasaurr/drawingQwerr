@@ -1,21 +1,34 @@
 const express = require("express");
 const router = express.Router();
-const supabase = require("../supabaseClient"); // For unauthenticated operations
+const supabase = require("../supabaseClient");
 const { authMiddleware } = require("../middleware/authMiddleware");
+const xss = require("xss");
 
 // Signup - no auth required
 router.post("/signup", async (req, res) => {
 	try {
 		const { username, email, password } = req.body;
 
-		// Check username - public SELECT is allowed
-		const { data: existingUser, error: usernameError } = await supabase.from("profiles").select("id").eq("username", username);
+		const cleanUsername = xss(username);
 
+		const isValidAvatar = avatar ? avatar.startsWith("http") : true;
+		if (!isValidAvatar) return res.status(400).json({ error: "Invalid avatar URL" });
+
+		// Check username if exists
+		const { data: existingUser, error: usernameError } = await supabase.from("profiles").select("id").eq("username", cleanUsername);
 		if (usernameError) throw usernameError;
 		if (existingUser.length > 0) {
 			return res.status(400).json({ error: "Username already exists" });
 		}
 
+		// Check email if exists
+		const { data: existingEmail, error: emailError } = await supabase.from("profiles").select("id").eq("email", email);
+		if (emailError) throw emailError;
+		if (existingEmail.length > 0) {
+			return res.status(400).json({ error: "Email already exists" });
+		}
+
+		// signup
 		const { data: authData, error: authError } = await supabase.auth.signUp({
 			email,
 			password,
@@ -23,12 +36,12 @@ router.post("/signup", async (req, res) => {
 		if (authError) throw authError;
 		if (!authData.user) throw new Error("Signup failed");
 
+		// Create profile and insert data to supabase
 		const userId = authData.user.id;
-
 		const { error: profileError } = await supabase.from("profiles").insert({
 			id: userId,
-			username,
-			avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
+			username: cleanUsername,
+			avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
 			bio: "Hello! I love creating digital art.",
 		});
 
@@ -92,6 +105,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 	}
 });
 
+// update profile
 router.put("/:id", authMiddleware, async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -100,8 +114,12 @@ router.put("/:id", authMiddleware, async (req, res) => {
 			return res.status(403).json({ error: "Forbidden" });
 		}
 
+		const { data: profile, error: fetchError } = await req.supabase.from("profiles").select("*").eq("id", id).single();
+		if (fetchError) throw fetchError;
+
 		const updates = req.body;
 
+		// Check if username is already taken
 		if (updates.username) {
 			const { data: existingUser } = await supabase.from("profiles").select("id").eq("username", updates.username).single();
 
@@ -109,6 +127,10 @@ router.put("/:id", authMiddleware, async (req, res) => {
 				return res.status(400).json({ error: "Username is already taken" });
 			}
 		}
+		// clean data
+		if (updates.username) updates.username = cleanUsername(updates.username);
+		if (updates.avatar) updates.avatar = cleanAvatar(updates.avatar);
+		if (updates.bio) updates.bio = cleanBio(updates.bio);
 
 		const { error } = await req.supabase.from("profiles").update(updates).eq("id", id);
 
@@ -119,7 +141,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
 	}
 });
 
-// Premium - requires auth
+// Premium
 router.put("/:id/premium", authMiddleware, async (req, res) => {
 	try {
 		const { id } = req.params;
