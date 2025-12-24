@@ -23,6 +23,8 @@ interface LoginData {
 
 export const apiSignup = async ({ username, email, password }: SignupData) => {
 	const res = await axios.post(`${API_URL}/signup`, { username, email, password }, { withCredentials: true });
+	console.log("apiSignup res.data:", res.data);
+
 	return res.data;
 };
 

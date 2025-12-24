@@ -62,7 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			localStorage.setItem("refreshToken", res.refresh_token);
 			await fetchProfile();
 		} catch (err: any) {
-			throw new Error(err.response?.data?.error || err.message);
+			console.log("signup error:", err);
+
+			if (err.response && err.response.data) {
+				const serverError = new Error(err.response.data.error || err.response.data || "Signup failed");
+				(serverError as any).details = err.response.data.details;
+				throw serverError;
+			}
+			throw new Error(err.message);
 		}
 	};
 
@@ -74,7 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			localStorage.setItem("refreshToken", res.refresh_token);
 			await fetchProfile();
 		} catch (err: any) {
-			throw new Error(err.response?.data?.error || err.message);
+			throw err;
+			// throw new Error(err.response?.data?.error || err.message);
 		}
 	};
 

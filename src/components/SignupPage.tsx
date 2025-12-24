@@ -26,14 +26,21 @@ export default function SignupPage() {
 			await signup(username, email, password);
 			navigate("/dashboard");
 		} catch (err: any) {
-			setError(err.message);
+			if (err.details && Array.isArray(err.details) && err.details.length > 0) {
+				const firstError = err.details[0].message;
+				setError(firstError);
+			} else if (err.message) {
+				setError(err.message);
+			} else {
+				setError("An unexpected error occurred");
+			}
 		} finally {
 			setLoading(false);
 		}
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-6">
+		<div className="min-h-screen bg-linear-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-6">
 			<div className="w-full max-w-md">
 				<Link to="/" className="flex items-center justify-center gap-2 mb-8">
 					<Palette className="w-8 h-8 text-purple-600" />
@@ -82,7 +89,7 @@ export default function SignupPage() {
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
 									required
-									minLength={6}
+									minLength={8}
 								/>
 							</div>
 

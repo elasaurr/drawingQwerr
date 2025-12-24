@@ -26,9 +26,12 @@ export default function LoginPage() {
 			navigate("/dashboard");
 		} catch (err: any) {
 			if (err.response && err.response.data && err.response.data.error) {
+				// console.log("Login if error:", err.response.data.error);
 				setError(err.response.data.error);
 			} else {
-				setError(err.message || "An unexpected error occurred");
+				// console.log("Login else error:", err);
+				if (err.status === 429) setError("Too many requests. Please try again later.");
+				else setError(err.message || err.data || "An unexpected error occurred");
 			}
 		} finally {
 			setLoading(false);

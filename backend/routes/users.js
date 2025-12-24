@@ -4,28 +4,20 @@ const supabase = require("../supabaseClient");
 const { authMiddleware } = require("../middleware/authMiddleware");
 const xss = require("xss");
 
+const { validate, signupSchema, loginSchema, updateProfileSchema } = require("../middleware/validation");
+
 // Signup - no auth required
-router.post("/signup", async (req, res) => {
+router.post("/signup", validate(signupSchema), async (req, res) => {
 	try {
 		const { username, email, password } = req.body;
 
 		const cleanUsername = xss(username);
-
-		const isValidAvatar = avatar ? avatar.startsWith("http") : true;
-		if (!isValidAvatar) return res.status(400).json({ error: "Invalid avatar URL" });
 
 		// Check username if exists
 		const { data: existingUser, error: usernameError } = await supabase.from("profiles").select("id").eq("username", cleanUsername);
 		if (usernameError) throw usernameError;
 		if (existingUser.length > 0) {
 			return res.status(400).json({ error: "Username already exists" });
-		}
-
-		// Check email if exists
-		const { data: existingEmail, error: emailError } = await supabase.from("profiles").select("id").eq("email", email);
-		if (emailError) throw emailError;
-		if (existingEmail.length > 0) {
-			return res.status(400).json({ error: "Email already exists" });
 		}
 
 		// signup
@@ -58,7 +50,7 @@ router.post("/signup", async (req, res) => {
 	}
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", validate(loginSchema), async (req, res) => {
 	try {
 		const { email, password } = req.body;
 		const { data, error } = await supabase.auth.signInWithPassword({
@@ -106,7 +98,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 });
 
 // update profile
-router.put("/:id", authMiddleware, async (req, res) => {
+router.put("/:id", validate(updateProfileSchema), authMiddleware, async (req, res) => {
 	try {
 		const { id } = req.params;
 

@@ -3,6 +3,8 @@ const router = express.Router();
 const crypto = require("crypto");
 const { authMiddleware } = require("../middleware/authMiddleware");
 
+const { validate, drawingSchema, updateDrawingSchema } = require("../middleware/validation");
+
 function dataURLToBuffer(dataURL) {
 	if (!dataURL) return Buffer.from("");
 	const parts = dataURL.split(",");
@@ -85,7 +87,7 @@ router.get("/:userId/:drawingId/url", async (req, res) => {
 	}
 });
 
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, validate(drawingSchema), async (req, res) => {
 	try {
 		const userId = req.user.id;
 		const { title, thumbnail, width, height, createdAt, layers } = req.body;
@@ -151,7 +153,7 @@ router.post("/", async (req, res) => {
 	}
 });
 
-router.put("/:drawingId", async (req, res) => {
+router.put("/:drawingId", authMiddleware, validate(updateDrawingSchema), async (req, res) => {
 	try {
 		const { drawingId } = req.params;
 		const userId = req.user.id;
