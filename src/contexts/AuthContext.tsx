@@ -43,6 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				return;
 			}
 			const profile = await apiFetchProfile(storedUserId);
+
+			if (profile.premium_expiry && new Date(profile.premium_expiry) < new Date()) profile.premium_expiry = null;
+
 			setUser(profile);
 		} catch (err: any) {
 			localStorage.removeItem("userId");

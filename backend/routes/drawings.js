@@ -18,6 +18,7 @@ function isPng(buffer) {
 
 router.use(authMiddleware);
 
+// get all drawings
 router.get("/:userId", async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -37,6 +38,7 @@ router.get("/:userId", async (req, res) => {
 	}
 });
 
+// get single drawing
 router.get("/:userId/:drawingId", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
@@ -70,6 +72,7 @@ router.get("/:userId/:drawingId", async (req, res) => {
 	}
 });
 
+// get signed url
 router.get("/:userId/:drawingId/url", async (req, res) => {
 	try {
 		const { userId, drawingId } = req.params;
@@ -87,6 +90,7 @@ router.get("/:userId/:drawingId/url", async (req, res) => {
 	}
 });
 
+// create drawing
 router.post("/", authMiddleware, validate(drawingSchema), async (req, res) => {
 	try {
 		const userId = req.user.id;
@@ -153,6 +157,7 @@ router.post("/", authMiddleware, validate(drawingSchema), async (req, res) => {
 	}
 });
 
+// update drawing
 router.put("/:drawingId", authMiddleware, validate(updateDrawingSchema), async (req, res) => {
 	try {
 		const { drawingId } = req.params;

@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "./ui/input-otp";
 import { Button } from "./ui/button";
 import { Lock, Loader2 } from "lucide-react";
-import { apiVerifyPremium } from "../api/users";
+import { apiVerifyPremiumOTP } from "../api/users";
 import { useAuth } from "../contexts/AuthContext";
 
 interface PremiumOtpModalProps {
@@ -25,9 +25,11 @@ export default function PremiumOtpModal({ isOpen, onClose, plan, onSuccess }: Pr
 		setError("");
 
 		try {
-			const res = await apiVerifyPremium(user.id, otp, plan);
+			const res = await apiVerifyPremiumOTP(user.id, otp, plan);
 
 			await fetchProfile();
+			console.log("premium otp modal res: ", res);
+
 			onSuccess(res.premium_expiry);
 			onClose();
 		} catch (err: any) {
@@ -39,7 +41,7 @@ export default function PremiumOtpModal({ isOpen, onClose, plan, onSuccess }: Pr
 
 	return (
 		<Dialog open={isOpen} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="max-w-sm sm:max-w-md">
 				<DialogHeader>
 					<div className="mx-auto bg-purple-100 p-3 rounded-full mb-4 w-fit">
 						<Lock className="w-6 h-6 text-purple-600" />
@@ -66,8 +68,14 @@ export default function PremiumOtpModal({ isOpen, onClose, plan, onSuccess }: Pr
 					{error && <p className="text-sm text-red-500 font-medium">{error}</p>}
 				</div>
 
-				<DialogFooter className="sm:justify-center">
-					<Button onClick={handleVerify} disabled={otp.length < 6 || loading} className="w-full sm:w-auto min-w-[140px]">
+				<DialogFooter className="flex-row gap-2 sm:justify-center">
+					{/* Cancel Button */}
+					<Button variant="outline" onClick={onClose} disabled={loading} className="w-1/2">
+						Cancel
+					</Button>
+
+					{/* Confirm Button */}
+					<Button onClick={handleVerify} disabled={otp.length < 6 || loading} className="w-1/2" variant="default">
 						{loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
 						{loading ? "Verifying..." : "Confirm Purchase"}
 					</Button>

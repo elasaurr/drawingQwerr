@@ -27,14 +27,11 @@ export default function SignupPage() {
 			navigate("/dashboard");
 		} catch (err: any) {
 			if (err.details && Array.isArray(err.details) && err.details.length > 0) {
-				console.log("Signup error1:", err);
 				const firstError = err.details[0].message;
 				setError(firstError);
 			} else if (err.message) {
-				console.log("Signup error2:", err);
 				setError(err.message);
 			} else {
-				console.log("Signup error3:", err);
 				setError("An unexpected error occurred");
 			}
 		} finally {

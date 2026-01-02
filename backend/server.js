@@ -15,14 +15,6 @@ const drawingsRouter = require("./routes/drawings");
 
 const app = express();
 
-const limiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: 100,
-	message: "Too many requests from this IP, please try again after 15 minutes",
-});
-
-app.use(limiter);
-
 app.use(
 	cors({
 		origin: process.env.CLIENT_URL || "http://localhost:3000",
@@ -30,28 +22,43 @@ app.use(
 	})
 );
 
-app.use(helmet());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
-
+// limiters
+const limiter = rateLimit({
+	windowMs: 15 * 60 * 1000,
+	max: 100,
+	message: "Too many requests from this IP, please try again after 15 minutes",
+});
 const authLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
 	max: 15, // Limit each IP to 15 login requests per window
 	message: "Too many login attempts, please try again later",
 });
+const uploadLimiter = rateLimit({
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 50,
+	message: "Too many file uploads, please try again later",
+});
+
+app.use(limiter);
+app.use(helmet());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
 app.use("/users/login", authLimiter);
 app.use("/users/signup", authLimiter);
-
+// app.use("/users/*/sendotp", otpLimiter);
+// app.use("/users/*/verifyotp", otpLimiter);
+app.use("/drawings", uploadLimiter);
 app.use("/users", express.json({ limit: "1mb" }), usersRouter);
-app.use("/drawings", express.json({ limit: "50mb" }), drawingsRouter);
+app.use("/drawings", express.json({ limit: "100mb" }), drawingsRouter);
+
 // Test route
 app.get("/", (req, res) => {
 	res.send("Server is running!");
 });
 
 app.use((err, req, res, next) => {
-	console.error(err.stack); // Log internally
+	console.error(err.stack);
 	res.status(500).json({
 		error: process.env.NODE_ENV === "production" ? "Internal Server Error" : err.message,
 	});

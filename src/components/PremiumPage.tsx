@@ -6,21 +6,35 @@ import { Badge } from "./ui/badge";
 import { Palette, Check, Crown, Home, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import Spinner from "./ui/spinner";
-
+import PaymentModal from "./PremiumPaymentModal";
+import PremiumOtpModal from "./PremiumOTPModal";
 import { APP_NAME } from "../constants";
+import { apiStartPremiumOtp } from "../api/users";
 
 export default function PremiumPage() {
-	const { user, getPremium } = useAuth();
+	const { user } = useAuth();
 	const navigate = useNavigate();
+
 	const [loading, setLoading] = useState(false);
-	const [expiry, setExpiry] = useState(String || null);
+	const [expiry, setExpiry] = useState<string | null>(null);
+	const [isLimited, setIsLimited] = useState(false);
+	const [mobileNumber, setMobileNumber] = useState<string>("");
+
+	// Modal States
+	const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+	const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+	const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly" | null>(null);
+
+	const prices = {
+		monthly: 10,
+		yearly: 100,
+	};
 
 	useEffect(() => {
 		if (!user) navigate("/login");
 		if (user && user.premium_expiry !== null) {
 			setExpiry(
 				new Date(user.premium_expiry).toLocaleString("en-US", {
-					// weekday: "long",
 					year: "numeric",
 					month: "long",
 					day: "numeric",
@@ -28,24 +42,35 @@ export default function PremiumPage() {
 					minute: "2-digit",
 				})
 			);
-			// console.log("PremiumPage useEffect() user.premium_expiry:", expiry);
 		}
-	});
+	}, [user, navigate]);
 
-	const handleUpgrade = async (plan: "monthly" | "yearly") => {
+	const handleUpgrade = (plan: "monthly" | "yearly") => {
 		if (!user) return;
-		setLoading(true);
-		try {
-			// console.log("PremiumPage.handleUpgrade() user.id:", user.id, "plan:", plan);
+		setSelectedPlan(plan);
+		setIsPaymentModalOpen(true);
+	};
 
-			await getPremium(plan);
-			alert(`Successfully upgraded to Premium (${plan})! 🎉\nExpires at: ${expiry}`);
-			navigate("/dashboard");
+	const handlePaymentConfirm = async () => {
+		setIsPaymentModalOpen(false);
+		setLoading(true);
+
+		try {
+			if (!user) return;
+			if (!mobileNumber || mobileNumber.length !== 11) throw new Error("Invalid mobile number");
+			await apiStartPremiumOtp(user.id, mobileNumber);
+			setIsOtpModalOpen(true);
 		} catch (err: any) {
-			alert(err.response?.data?.error || err.message || "Something went wrong");
+			alert(err.response?.data?.error || "Failed to send verification code");
+			setSelectedPlan(null);
 		} finally {
 			setLoading(false);
 		}
+	};
+
+	const handleOtpSuccess = (newExpiry: string) => {
+		alert(`Successfully upgraded to Premium (${selectedPlan})! 🎉\nExpires at: ${new Date(newExpiry).toLocaleDateString()}`);
+		navigate("/dashboard");
 	};
 
 	const premiumFeatures = [
@@ -62,10 +87,37 @@ export default function PremiumPage() {
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
 			{loading && (
-				<div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
+				<div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/20 z-50">
 					<Spinner />
 				</div>
 			)}
+
+			{/* MoDALS */}
+
+			<PaymentModal
+				isOpen={isPaymentModalOpen}
+				onClose={() => {
+					setIsPaymentModalOpen(false);
+					setSelectedPlan(null);
+					setLoading(false);
+				}}
+				plan={selectedPlan}
+				mobileNumber={mobileNumber}
+				setMobileNumber={setMobileNumber}
+				price={selectedPlan ? String(prices[selectedPlan]) : ""}
+				onConfirm={handlePaymentConfirm}
+			/>
+
+			<PremiumOtpModal
+				isOpen={isOtpModalOpen}
+				onClose={() => {
+					setIsOtpModalOpen(false);
+					setSelectedPlan(null);
+				}}
+				plan={selectedPlan}
+				onSuccess={handleOtpSuccess}
+			/>
+
 			<nav className="bg-white border-b">
 				<div className="container mx-auto px-6 py-4 flex justify-between items-center">
 					<Link to="/dashboard" className="flex items-center gap-2">
@@ -104,6 +156,7 @@ export default function PremiumPage() {
 						</div>
 
 						<div className="grid md:grid-cols-2 gap-8 mb-12">
+							{/* Monthly Card */}
 							<Card className="relative overflow-hidden hover:shadow-xl transition-shadow">
 								<div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400 to-blue-400 rounded-bl-full opacity-10" />
 								<CardHeader>
@@ -115,10 +168,10 @@ export default function PremiumPage() {
 								</CardHeader>
 								<CardContent>
 									<div className="mb-6">
-										<span className="text-5xl">$4.99</span>
+										<span className="text-5xl">₱{prices.monthly}</span>
 										<span className="text-gray-600">/month</span>
 									</div>
-									<Button onClick={() => handleUpgrade("monthly")} className="w-full mb-6" size="lg">
+									<Button onClick={() => handleUpgrade("monthly")} className="w-full mb-6" size="lg" disabled={isLimited}>
 										Upgrade to Monthly
 									</Button>
 									<ul className="space-y-3">
@@ -132,6 +185,7 @@ export default function PremiumPage() {
 								</CardContent>
 							</Card>
 
+							{/* Yearly Card */}
 							<Card className="relative overflow-hidden hover:shadow-xl transition-shadow border-2 border-purple-300">
 								<div className="absolute top-0 right-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-1 text-sm">
 									Save 40%
@@ -149,14 +203,15 @@ export default function PremiumPage() {
 								</CardHeader>
 								<CardContent>
 									<div className="mb-2">
-										<span className="text-5xl">$35.99</span>
+										<span className="text-5xl">₱{prices.yearly}</span>
 										<span className="text-gray-600">/year</span>
 									</div>
-									<p className="text-sm text-green-600 mb-6">Save $23.89 compared to monthly</p>
+									<p className="text-sm text-green-600 mb-6">Save ₱23.89 compared to monthly</p>
 									<Button
 										onClick={() => handleUpgrade("yearly")}
 										className="w-full mb-6 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-										size="lg">
+										size="lg"
+										disabled={isLimited}>
 										Upgrade to Yearly
 									</Button>
 									<ul className="space-y-3">

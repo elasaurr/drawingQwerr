@@ -58,6 +58,23 @@ const updateDrawingSchema = z.object({
 	layers: z.array(z.any()).max(100).optional(),
 });
 
+const sendOTPSchema = z.object({
+	mobileNumber: z
+		.string()
+		.trim()
+		.regex(/^09\d{9}$/, "Invalid mobile number"),
+});
+
+const verifyOTPSchema = z.object({
+	otp: z
+		.string()
+		.trim()
+		.min(6)
+		.max(6)
+		.regex(/^\d{6}$/, "OTP error"),
+	plan: z.enum(["monthly", "yearly"]),
+});
+
 module.exports = {
 	validate,
 	signupSchema,
@@ -65,4 +82,6 @@ module.exports = {
 	updateProfileSchema,
 	drawingSchema,
 	updateDrawingSchema,
+	sendOTPSchema,
+	verifyOTPSchema,
 };

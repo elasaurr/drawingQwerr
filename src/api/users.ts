@@ -73,7 +73,14 @@ export const apiPremium = async (userId: string, plan: "monthly" | "yearly") => 
 	return res.data;
 };
 
-export const apiVerifyPremium = async (userId: string, otp: string, plan: "monthly" | "yearly") => {
-	const res = await axios.get(`${API_URL}/verify`, { withCredentials: true, headers: getAuthHeader() });
+export const apiStartPremiumOtp = async (userId: string, mobileNumber: string) => {
+	console.log("requesting otp");
+
+	const res = await axios.post(`${API_URL}/${userId}/sendotp`, { mobileNumber }, { withCredentials: true, headers: getAuthHeader() });
+	return res.data;
+};
+
+export const apiVerifyPremiumOTP = async (userId: string, otp: string, plan: "monthly" | "yearly") => {
+	const res = await axios.post(`${API_URL}/${userId}/verifyotp`, { otp, plan }, { withCredentials: true, headers: getAuthHeader() });
 	return res.data;
 };
