@@ -72,3 +72,8 @@ export const apiPremium = async (userId: string, plan: "monthly" | "yearly") => 
 	);
 	return res.data;
 };
+
+export const apiVerifyPremium = async (userId: string, otp: string, plan: "monthly" | "yearly") => {
+	const res = await axios.get(`${API_URL}/verify`, { withCredentials: true, headers: getAuthHeader() });
+	return res.data;
+};

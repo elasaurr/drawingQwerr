@@ -14,11 +14,11 @@ router.post("/signup", validate(signupSchema), async (req, res) => {
 		const cleanUsername = xss(username);
 
 		// Check username if exists
-		const { data: existingUser, error: usernameError } = await supabase.from("profiles").select("id").eq("username", cleanUsername);
-		if (usernameError) throw usernameError;
-		if (existingUser.length > 0) {
-			return res.status(400).json({ error: "Username already exists" });
-		}
+		// const { data: existingUser, error: usernameError } = await supabase.from("profiles").select("id").eq("username", cleanUsername);
+		// if (usernameError) throw usernameError;
+		// if (existingUser.length > 0) {
+		// 	return res.status(400).json({ error: "Username already exists" });
+		// }
 
 		// signup
 		const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -46,6 +46,7 @@ router.post("/signup", validate(signupSchema), async (req, res) => {
 			refresh_token: authData.session?.refresh_token,
 		});
 	} catch (err) {
+		if (err.code === "23505") return res.status(400).json({ error: "Username already exists", details: err.detail });
 		res.status(500).json({ error: err.message });
 	}
 });
