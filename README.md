@@ -1,91 +1,69 @@
 # DrawingQwerr
 
-This is a code bundle for Drawing App.
-
-## Running the code
-
-### Option A. using npm run dev
-
-Run `npm i` to install the dependencies.
-
-Run `npm run dev` to start the development server.
-
-#### on another terminal,
-
-Run `cd backend`
-Run `npm i`
-Run `npm run dev`
-
-### Option B. using run.bat
-
-Run `./run.bat` to start both backend and frontend server
+Short web-based drawing application with user accounts, persistent storage, gallery, and premium gating.
 
 ## Project Summary
 
-DrawingQwerr is a web-based drawing application that provides a collaborative single-user drawing experience with persistent storage and account management. Key user-facing capabilities:
+-   Interactive canvas: brushes, shapes, eraser, size/quality, multi-layer support, undo/redo, presets.
+-   Export: PNG download and thumbnail generation.
+-   User gallery/dashboard: per-user listings and thumbnails.
+-   Account flows: signup, login, logout, profile.
+-   Premium subscription: gated premium features and UI.
+-   Client structure: React + hooks, auth context, protected routes, API clients.
+-   Backend: REST API, upload handling, Supabase storage/integration.
 
--   Interactive canvas with brushes, shapes, eraser and size/quality controls.
--   Multi-layer support and layer panel UI for organizing strokes.
--   Undo / redo, clear, history and canvas presets for new drawings.
--   Export and download drawings as PNG; thumbnail generation for gallery.
--   User gallery / dashboard with thumbnails and per-user listing.
--   Premium features gated behind subscription flow.
--   Client-side flow and components:
-    -   Auth context and hooks: src/contexts/AuthContext.tsx
-    -   Protected routes: src/App.tsx (ProtectedRoute)
-    -   Canvas and layer UI: src/components/DrawingCanvas.tsx, src/components/LayerPanel.tsx
-    -   API clients: src/api/_.ts and src/services/_.ts
+## Key Features
+
+-   Canvas editor (DrawingCanvas) and LayerPanel UI.
+-   Per-user galleries and thumbnail generation.
+-   Upload/save drawings to Supabase Storage.
+-   Protected UI routes and authenticated API actions.
+-   Rate-limited auth endpoints and payload size limits.
 
 ## Security Features
 
-Security hardening implemented across backend and client:
-
 -   Authentication & Authorization
-
-    -   Backend authentication endpoints and Supabase integration: backend/routes/users.js and backend/supabaseClient.js.
-    -   Token verification and per-request auth enforcement via backend/middleware/authMiddleware.js.
-    -   Client enforces protected UI routes via ProtectedRoute and attaches bearer tokens with helpers in src/api/users.ts.
-
+    -   Supabase-backed auth and backend token verification (authMiddleware).
+    -   Per-route ownership checks (compare req.user.id to resource owner).
 -   Input validation
-
-    -   Zod schemas and centralized validation middleware protect endpoints (backend/middleware/validation.js).
-
+    -   Zod schemas and centralized validation middleware.
 -   Rate limiting
-
-    -   Global and sensitive-route limits using express-rate-limit (configured in backend/server.js).
-
+    -   express-rate-limit for global and auth-sensitive endpoints.
 -   Secure headers & CORS
-
-    -   Helmet to set secure HTTP headers and explicit CORS origin/credentials configuration in backend/server.js.
-
--   Payload and file safety
-
-    -   Request size limits for JSON and uploads to mitigate large payload abuse.
-    -   File validation (content-type checks, dataURL -> buffer conversion, PNG checks) before storage in backend/routes/drawings.js.
-    -   Safe storage via Supabase Storage with controlled content types and signed URLs.
-
--   XSS & sanitization
-
-    -   User-supplied strings (e.g., display names) sanitized before persistence (backend/routes/users.js).
-
--   Error handling
-
-    -   Centralized error handler that avoids leaking stack traces in production (backend/server.js).
-
+    -   Helmet and restricted CORS origin/credentials.
+-   Payload & file safety
+    -   JSON/upload size limits, dataURL -> buffer conversion, content-type checks, PNG validation.
+    -   Safe storage using Supabase Storage with controlled content types and signed URLs.
+-   XSS mitigation
+    -   Sanitization of user-supplied strings before persistence.
+-   Centralized error handling
+    -   Sanitized errors in production; full details only in non-production.
 -   Client protections
-    -   Protected UI routes, auth-aware API helpers, and client-side checks to reduce accidental exposure of actions to unauthenticated users.
+    -   ProtectedRoute, useAuth, and API helpers that attach Bearer tokens.
 
-## Where to look (important files)
+## Technologies Used
 
--   Backend entry and middleware: backend/server.js, backend/middleware/authMiddleware.js, backend/middleware/validation.js
--   Auth & user routes: backend/routes/users.js
--   Drawings / upload routes: backend/routes/drawings.js
--   Supabase client: backend/supabaseClient.js
--   Client auth + routing: src/contexts/AuthContext.tsx, src/App.tsx
--   Canvas and components: src/components/DrawingCanvas.tsx, src/components/LayerPanel.tsx
--   API helpers: src/api/users.ts, src/api/drawings.ts, src/services/drawingsService.ts
+-   Frontend
+    -   React
+    -   Axios / fetch for API calls
+-   Backend
+    -   Node.js, Express
+    -   Zod for validation
+    -   express-rate-limit
+    -   Helmet
+    -   Cors
+    -   Supabase (Auth + Storage + Database)
+-   Storage & Hosting
+    -   Supabase Storage
+-   Environment
+    -   dotenv for secrets and API keys
+
+## Important Files / Where to look
+
+-   Backend: backend/server.js, backend/middleware/authMiddleware.js, backend/middleware/validation.js, backend/routes/users.js, backend/routes/drawings.js, backend/supabaseClient.js
+-   Frontend: src/contexts/AuthContext.tsx, src/App.tsx (ProtectedRoute), src/components/DrawingCanvas.tsx, src/components/LayerPanel.tsx, src/api/users.ts, src/api/drawings.ts, src/services/drawingsService.ts
 
 ## Notes
 
--   Keep environment secrets (Supabase keys, JWT secrets) out of the repo and set them via environment variables.
--   If you want specific wording or additional run instructions added to this README, tell me what to include.
+-   Keep Supabase keys, JWT secrets and other env vars out of repo and configure them in the environment.
+-   If you want this README expanded with run instructions, environment variables list, or badges, tell me which sections to add.
